@@ -38,7 +38,7 @@ app.use('/uploads', express.static('uploads'));// 업로드된 파일을 정적�
 
 // 라우팅 설정
 app.post('/api/movies', upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
-  const { title, description, serialNumber, actor, plexRegistered } = req.body;
+  const { title, description, serialNumber, actor, plexRegistered,releaseDate } = req.body;
   const image = req.files.image[0].path;
   const trailer = req.files.trailer[0].path;
 
@@ -50,7 +50,9 @@ app.post('/api/movies', upload.fields([{ name: 'image' }, { name: 'trailer' }]),
         actor,
         plexRegistered: plexRegistered === 'true',// boolean으로 변환
         image, 
-        trailer 
+        trailer,
+        releaseDate
+
 
     });
   await movie.save();
