@@ -71,26 +71,33 @@ const authMiddleware = (req, res, next) => {
 
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
-  const { title, description, serialNumber, actor, plexRegistered,releaseDate } = req.body;
-  const image = req.files.image[0].path;
-  const trailer = req.files.trailer[0].path;
-
-  const movie = new Movie(
-    { 
-        title, 
-        description,
-        serialNumber,
-        actor,
-        plexRegistered: plexRegistered === 'true',// boolean으로 변환
-        image, 
-        trailer,
-        releaseDate
-
-
-    });
-  await movie.save();
-
-  res.status(201).send(movie);
+    try{
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate } = req.body;
+        const image = req.files.image[0].path;
+        const trailer = req.files.trailer[0].path;
+    
+        const movie = new Movie(
+        { 
+            title, 
+            description,
+            serialNumber,
+            actor,
+            plexRegistered: plexRegistered === 'true',// boolean으로 변환
+            image, 
+            trailer,
+            releaseDate
+    
+    
+        });
+        await movie.save();
+    
+        res.status(201).send(movie);
+    }
+    catch(err)
+    {
+        console.log(err)
+    }
+  
 });
 
 // 영화 삭제 API
@@ -124,6 +131,7 @@ app.delete('/api/movies/:id',authMiddleware, async (req, res) => {
         res.json({ message: 'Movie deleted successfully' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete movie' });
+        console.log(err)
     }
 });
 
@@ -157,6 +165,7 @@ app.get('/api/movies/:id', async (req, res) => {
         res.json(movie);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch movie' });
+        console.log(err)
     }
 });
 
@@ -167,6 +176,7 @@ app.get('/api/actors', async (req, res) => {
         res.json(actors);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch actors' });
+        console.log(err)
     }
 });
 
@@ -181,6 +191,7 @@ app.post('/api/actors', authMiddleware,async (req, res) => {
         res.status(201).json(actor);
     } catch (err) {
         res.status(500).json({ error: 'Failed to add actor' });
+        console.log(err)
     }
 });
 
@@ -200,6 +211,7 @@ app.put('/api/movies/:id',authMiddleware, async (req, res) => {
         res.json(updatedMovie);
     } catch (err) {
         res.status(500).json({ error: 'Failed to update movie' });
+        console.log(err)
     }
 });
 
