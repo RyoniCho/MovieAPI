@@ -55,7 +55,11 @@ app.use('/api/auth', authRoutes);
 
 //JWT 확인하는 미들웨어
 const authMiddleware = (req, res, next) => {
-    const token = req.header('Authorization').replace('Bearer ', '');
+
+    const authorization = req.header('Authorization');
+    console.log("authMiddleware: "+authorization);
+
+    const token = authorization.replace('Bearer ', '');
     if (!token) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
