@@ -70,7 +70,7 @@ const authMiddleware = (req, res, next) => {
 };
 
 // 라우팅 설정
-app.post('/api/movies', upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
+app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
   const { title, description, serialNumber, actor, plexRegistered,releaseDate } = req.body;
   const image = req.files.image[0].path;
   const trailer = req.files.trailer[0].path;
