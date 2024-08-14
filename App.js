@@ -6,8 +6,14 @@ const Movie = require('./models/Movie');
 const Actor = require('./models/Actor');
 const cors = require('cors'); // CORS 패키지 추가
 const fs = require('fs');
+const authRoutes = require('./Auth');
+
+const jwt = require('jsonwebtoken');
 
 const app = express();
+
+require('dotenv').config();
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // MongoDB 연결
 mongoose.connect('mongodb://localhost:27017/movies', { useNewUrlParser: true, useUnifiedTopology: true });
@@ -32,9 +38,30 @@ app.use(cors()); // CORS 미들웨어 추가
 
 
 
+
+
 // 미들웨어 설정
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));// 업로드된 파일을 정적으로 제공
+
+//Login Auth
+app.use('/api/auth', authRoutes);
+
+//JWT 확인하는 미들웨어
+const authMiddleware = (req, res, next) => {
+    const token = req.header('Authorization').replace('Bearer ', '');
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.userId = decoded.userId;
+        next();
+    } catch (err) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
 
 // 라우팅 설정
 app.post('/api/movies', upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
@@ -61,7 +88,7 @@ app.post('/api/movies', upload.fields([{ name: 'image' }, { name: 'trailer' }]),
 });
 
 // 영화 삭제 API
-app.delete('/api/movies/:id', async (req, res) => {
+app.delete('/api/movies/:id',authMiddleware, async (req, res) => {
     try {
         const movie = await Movie.findByIdAndDelete(req.params.id);
         if (!movie) {
@@ -138,7 +165,7 @@ app.get('/api/actors', async (req, res) => {
 });
 
 // 새로운 배우 추가
-app.post('/api/actors', async (req, res) => {
+app.post('/api/actors', authMiddleware,async (req, res) => {
     const { name } = req.body;
 
     const actor = new Actor({ name });
@@ -148,6 +175,25 @@ app.post('/api/actors', async (req, res) => {
         res.status(201).json(actor);
     } catch (err) {
         res.status(500).json({ error: 'Failed to add actor' });
+    }
+});
+
+// 영화정보 업데이트
+app.put('/api/movies/:id',authMiddleware, async (req, res) => {
+    try {
+        const movieId = req.params.id;
+        const updatedData = req.body;
+
+        // 영화 정보 업데이트
+        const updatedMovie = await Movie.findByIdAndUpdate(movieId, updatedData, { new: true });
+
+        if (!updatedMovie) {
+            return res.status(404).json({ message: 'Movie not found' });
+        }
+
+        res.json(updatedMovie);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to update movie' });
     }
 });
 
