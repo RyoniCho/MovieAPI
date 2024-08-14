@@ -14,6 +14,7 @@ const app = express();
 
 require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET;
+const CORS_ORIGIN= process.env.CORS_ORIGIN;
 
 // MongoDB 연결
 mongoose.connect('mongodb://localhost:27017/movies', { useNewUrlParser: true, useUnifiedTopology: true });
@@ -34,7 +35,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 
-app.use(cors()); // CORS 미들웨어 추가
+app.use(cors(
+    {
+    origin: [CORS_ORIGIN],
+    credentials: true,
+}
+)); // CORS 미들웨어 추가
 
 
 
