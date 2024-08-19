@@ -87,9 +87,9 @@ const downloadContents = async (serialNumber,url)=>{
 }
 
 // 라우팅 설정
-app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' },{ name: 'extraImages', maxCount: 10 }]), async (req, res) => {
+app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,extraImage,urlTrailler} = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailler} = req.body;
 
         
         let imagePath;
@@ -115,6 +115,13 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             throw new Error('Trailer file or URL is required.');
         }
 
+        let extraImagePaths =[];
+        if(urlsExtraImage && urlsExtraImage.length>0)
+        {
+            urlsExtraImage.forEach((url,index)=>{
+                extraImagePaths.push(downloadContents(url));
+            })
+        }
         
        
     
@@ -129,7 +136,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             trailer: trailerPath,
             releaseDate,
             category,
-            extraImage,
+            extraImage:extraImagePaths,
     
     
         });
