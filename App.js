@@ -37,7 +37,7 @@ const upload = multer({ storage });
 
 app.use(cors(
     {
-    origin: [CORS_ORIGIN],
+    origin: [CORS_ORIGIN,"http://localhost:3000"],
     credentials: true,
 }
 )); // CORS 미들웨어 추가
@@ -76,7 +76,7 @@ const authMiddleware = (req, res, next) => {
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate } = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category} = req.body;
         const image = req.files.image[0].path;
         const trailer = req.files.trailer[0].path;
     
@@ -89,7 +89,8 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             plexRegistered: plexRegistered === 'true',// boolean으로 변환
             image, 
             trailer,
-            releaseDate
+            releaseDate,
+            category,
     
     
         });

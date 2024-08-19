@@ -10,9 +10,28 @@ const movieSchema = new mongoose.Schema({
   plexRegistered: { type: Boolean, default: false }, //plex에 등록된건지
   description: { type: String, default: '' },   // 영화 설명 (선택)
   releaseDate: { type: Date, default: Date.now },  // 개봉일 (선택)
+  category: {type:String,default:"Unknown"} //카테고리
 });
 
 // 영화 모델 생성
 const Movie = mongoose.model('Movie', movieSchema);
+
+/*
+async function addCategoryToAllMovies() {
+  try {
+      const result = await Movie.updateMany(
+          { category: { $exists: false } }, // category 필드가 없는 문서만 업데이트
+          { $set: { category: 'av' } } // 원하는 기본 카테고리 값으로 설정
+      );
+      console.log(`Updated ${result.nModified} documents.`);
+  } catch (error) {
+      console.error('Error updating documents:', error);
+  } finally {
+      mongoose.connection.close();
+  }
+}
+
+addCategoryToAllMovies();
+*/
 
 module.exports = Movie;
