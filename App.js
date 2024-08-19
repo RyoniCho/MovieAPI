@@ -76,7 +76,7 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
-const downloadImage = async (serialNumber,url)=>{
+const downloadContents = async (serialNumber,url)=>{
     const response = await axios.get(url.trim(), { responseType: 'arraybuffer' });
     const buffer = Buffer.from(response.data, 'binary');
     const fileName = serialNumber +"_"+ Date.now()+ path.extname(url);
@@ -89,20 +89,34 @@ const downloadImage = async (serialNumber,url)=>{
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' },{ name: 'extraImages', maxCount: 10 }]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage} = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,extraImage,urlTrailler} = req.body;
 
-        //const image = (urlImage!=='') ? downloadImage(serialNumber,urlImage): req.files.image[0].path;
+        
         let imagePath;
         if (urlImage && urlImage !== '') {
-            imagePath = await downloadImage(serialNumber, urlImage); // 비동기 처리
+            imagePath = await downloadContents(serialNumber, urlImage); // 비동기 처리
         } else if (req.files.image && req.files.image.length > 0) {
             imagePath = req.files.image[0].path;
         } else {
             throw new Error('Image file or URL is required.');
         }
 
-        const trailerPath = req.files.trailer[0].path;
-        //const extraImages = req.files.extraImage.map(file => file.path);
+        let trailerPath;
+        if(urlTrailler && urlTrailler!=='')
+        {
+            trailerPath= await downloadContents(serialNumber,urlTrailler);
+
+        }
+        else if(req.files.trailer && req.files.trailer.length>0)
+        {
+            trailerPath=req.files.trailer[0].path;
+        }
+        else {
+            throw new Error('Trailer file or URL is required.');
+        }
+
+        
+       
     
         const movie = new Movie(
         { 
@@ -115,7 +129,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             trailer: trailerPath,
             releaseDate,
             category,
-            //extraImage,
+            extraImage,
     
     
         });

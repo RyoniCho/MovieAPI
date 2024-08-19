@@ -6,7 +6,7 @@ const movieSchema = new mongoose.Schema({
   title: { type: String, required: true },      // 영화 제목 (필수)
   actor: { type: String, required: true },      // 배우(필수)
   image: { type: String, required: true },      // 영화 이미지 파일 경로 (필수)
-  //extraImage:{type: [String]},  //Extra Image
+  extraImage:{type: [String],default:[]},  //Extra Image
   trailer: { type: String, required: true },    // 예고편 영상 파일 경로 (필수)
   plexRegistered: { type: Boolean, default: false }, //plex에 등록된건지
   description: { type: String, default: '' },   // 영화 설명 (선택)
