@@ -118,9 +118,11 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
         let extraImagePaths =[];
         if(urlsExtraImage && urlsExtraImage.length>0)
         {
-            urlsExtraImage.forEach((url,index)=>{
-                extraImagePaths.push(downloadContents(url));
-            })
+            for(let i =0; i<urlsExtraImage.length;i++)
+            {
+                let path = await downloadContents(urlsExtraImage[i])
+                extraImagePaths.push(path);
+            }
         }
         
        
