@@ -287,6 +287,33 @@ app.put('/api/movies/:id',authMiddleware, async (req, res) => {
     }
 });
 
+const updateMoviesWithExtraImages = async () => {
+    try {
+        // `extraImage` 필드가 없는 영화들만 필터링
+        const movies = await Movie.find({ extraImage: { $exists: false } });
+        
+        for (const movie of movies) {
+            const splitedSerialNumber= movie.serialNumber.split("-");
+            const revisedSerialNumber= `${splitedSerialNumber[0].toLowerCase()}00${splitedSerialNumber[1]}`;
+            let extraImagePaths=[];
+            for(let i=0; i<=10;i++)
+            {
+                const url = `https://pics.dmm.co.jp/digital/video/${revisedSerialNumber}/${revisedSerialNumber}jp-${i}.jpg`
+                const imagePath = await downloadContents(movie.serialNumber, url);
+                extraImagePaths.push(imagePath);
+            }
+            movie.extraImage = extraImagePaths;
+            await movie.save();
+        }
+
+        console.log('Movies updated with extra images successfully.');
+    } catch (err) {
+        console.error('Error updating movies:', err);
+    }
+};
+
+updateMoviesWithExtraImages();
+
 // 서버 시작
 app.listen(3001, () => {
   console.log('Server is running on port 3001');
