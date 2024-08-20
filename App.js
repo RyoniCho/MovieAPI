@@ -312,7 +312,7 @@ const updateMoviesWithExtraImages = async () => {
     }
 };
 
-updateMoviesWithExtraImages();
+//updateMoviesWithExtraImages();
 
 // 서버 시작
 app.listen(3001, () => {
