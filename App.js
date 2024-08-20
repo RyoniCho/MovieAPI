@@ -120,7 +120,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
         {
             for(let i =0; i<urlsExtraImage.length;i++)
             {
-                let path = await downloadContents(urlsExtraImage[i])
+                let path = await downloadContents(serialNumber,urlsExtraImage[i])
                 extraImagePaths.push(path);
             }
         }
