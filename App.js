@@ -296,7 +296,7 @@ const updateMoviesWithExtraImages = async () => {
             const splitedSerialNumber= movie.serialNumber.trim().split("-");
             const revisedSerialNumber= `${splitedSerialNumber[0].toLowerCase()}00${splitedSerialNumber[1]}`;
             let extraImagePaths=[];
-            for(let i=0; i<=10;i++)
+            for(let i=1; i<=10;i++)
             {
                 const url = `https://pics.dmm.co.jp/digital/video/${revisedSerialNumber}/${revisedSerialNumber}jp-${i}.jpg`
                 const imagePath = await downloadContents(movie.serialNumber, url);
