@@ -184,6 +184,19 @@ app.delete('/api/movies/:id',authMiddleware, async (req, res) => {
         {
             console.log("not exist: "+ path.join(__dirname, movie.trailer));
         }
+
+        for(let i=0; i<movie.extraImage.length;i++)
+        {
+            let extraImagePath = path.join(__dirname,  movie.extraImage[i]);
+            if(fs.existsSync(extraImagePath))
+            {
+                fs.unlinkSync(extraImagePath);
+            }
+            else
+            {
+                console.log("not exist: "+ extraImagePath);
+            }
+        }
        
        
 
