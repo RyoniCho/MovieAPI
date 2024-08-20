@@ -293,7 +293,7 @@ const updateMoviesWithExtraImages = async () => {
         const movies = await Movie.find({ extraImage: { $exists: false } });
         
         for (const movie of movies) {
-            const splitedSerialNumber= movie.serialNumber.split("-");
+            const splitedSerialNumber= movie.serialNumber.trim().split("-");
             const revisedSerialNumber= `${splitedSerialNumber[0].toLowerCase()}00${splitedSerialNumber[1]}`;
             let extraImagePaths=[];
             for(let i=0; i<=10;i++)
