@@ -106,7 +106,24 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
        
         if(urlTrailer && urlTrailer!=='')
         {
-            trailerPath= await downloadContents(serialNumber,urlTrailer);
+            try{
+                trailerPath= await downloadContents(serialNumber,urlTrailer);
+            }
+            catch
+            {
+                try
+                {
+                    
+                    trailerPath= await downloadContents(serialNumber,urlTrailer.replace("_mhb_w","_dm_w"));
+                }
+                catch(err)
+                {
+                    res.status(500).json({ error: 'Failed to update movie' });
+                    console.log(err)
+                }
+               
+            }
+          
 
         }
         else if(req.files.trailer && req.files.trailer.length>0)
