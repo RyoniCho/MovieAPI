@@ -77,6 +77,7 @@ const authMiddleware = (req, res, next) => {
 };
 
 const downloadContents = async (serialNumber,url)=>{
+    console.log("downloadcontents:"+url);
     const response = await axios.get(url.trim(), { responseType: 'arraybuffer' });
     const buffer = Buffer.from(response.data, 'binary');
     const fileName = serialNumber +"_"+ Date.now()+ path.extname(url);
@@ -102,6 +103,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
         }
 
         let trailerPath;
+       
         if(urlTrailer && urlTrailer!=='')
         {
             trailerPath= await downloadContents(serialNumber,urlTrailer);
@@ -116,11 +118,15 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
         }
 
         let extraImagePaths =[];
+        
+        
         if(urlsExtraImage && urlsExtraImage.length>0)
         {
-            for(let i =0; i<urlsExtraImage.length;i++)
+            const listUrlExtraImg= urlsExtraImage.split(',');
+
+            for(let i =0; i<listUrlExtraImg.length;i++)
             {
-                let path = await downloadContents(serialNumber,urlsExtraImage[i])
+                let path = await downloadContents(serialNumber,listUrlExtraImg[i])
                 extraImagePaths.push(path);
             }
         }
