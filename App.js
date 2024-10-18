@@ -88,29 +88,57 @@ const downloadContents = async (serialNumber,url)=>{
     return filePath;
 }
 
-app.get('/api/stream',(req,res)=>{
+app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
-    const resolution = req.query.resolution;
+    const resolution = req.query.resolution === '720p' ? 720 : 1080;
 
-    ffmpeg(videoPath)
-    .outputOptions([
-      '-vf', `scale=-1:${resolution === '720p' ? 720 : 1080}`, // 해상도 조정
-      '-c:v', 'libx264', // 비디오 코덱 설정
-      '-c:a', 'aac', // 오디오 코덱 설정
-      '-f', 'mp4' // 출력 형식 설정
-    ])
-    .on('start', () => {
-      console.log('트랜스코딩 시작');
-    })
-    .on('end', () => {
-      console.log('트랜스코딩 완료');
-    })
-    .on('error', (err) => {
-      console.error('트랜스코딩 오류:', err);
-      res.status(500).send('트랜스코딩 중 오류 발생');
-    })
-    .pipe(res, { end: true }); // 트랜스코딩된 비디오를 클라이언트로 스트리밍
+    // 파일의 크기를 가져오기 위해 fs 모듈 사용
+    fs.stat(videoPath, (err, stats) => {
+        if (err) {
+            console.log('파일을 찾을 수 없습니다:', err);
+            return res.status(404).send('파일을 찾을 수 없습니다.');
+        }
 
+        // 클라이언트가 보낸 Range 헤더 확인
+        const range = req.headers.range;
+        if (!range) {
+            return res.status(400).send('Range 헤더가 필요합니다.');
+        }
+
+        const CHUNK_SIZE = 10 ** 6; // 1MB씩 청크로 보냄
+        const start = Number(range.replace(/\D/g, ""));
+        const end = Math.min(start + CHUNK_SIZE, stats.size - 1);
+
+        // 콘텐츠 길이 및 헤더 설정
+        const contentLength = end - start + 1;
+        res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": contentLength,
+            "Content-Type": "video/mp4",
+        });
+
+        // ffmpeg를 통해 트랜스코딩 및 스트리밍
+        ffmpeg(videoPath)
+            .outputOptions([
+                '-vf', `scale=-1:${resolution}`,
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-f', 'mp4',
+                '-movflags', 'frag_keyframe+empty_moov', // 빠른 시작을 위한 설정
+                '-preset', 'fast', // 빠른 트랜스코딩
+                '-tune', 'zerolatency' // 최소한의 지연을 위한 옵션
+            ])
+            .format('mp4')
+            .on('start', () => {
+                console.log('트랜스코딩 시작');
+            })
+            .on('error', (err) => {
+                console.error('트랜스코딩 오류:', err);
+                res.status(500).send('트랜스코딩 중 오류 발생');
+            })
+            .pipe(res, { end: true });
+    });
 });
 
 // 라우팅 설정
