@@ -94,7 +94,7 @@ app.get('/api/stream', (req, res) => {
 
     fs.stat(videoPath, (err, stats) => {
         if (err) {
-            console.log('파일을 찾을 수 없습니다:', err);
+            console.error('파일을 찾을 수 없습니다:', err);
             return res.status(404).send('파일을 찾을 수 없습니다.');
         }
 
@@ -103,27 +103,33 @@ app.get('/api/stream', (req, res) => {
             return res.status(400).send('Range 헤더가 필요합니다.');
         }
 
-        const CHUNK_SIZE = 10 ** 6; // 1MB 청크
-        const start = Number(range.replace(/\D/g, ""));
-        const end = Math.min(start + CHUNK_SIZE, stats.size - 1);
+        // Range 헤더에서 청크 크기 추출
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
 
-        const contentLength = end - start + 1;
+        const chunkSize = (end - start) + 1;
+        const fileSize = stats.size;
+
+        // 응답 헤더 설정 (한 번만 설정)
         const headers = {
-            "Content-Range": `bytes ${start}-${end}/${stats.size}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": contentLength,
-            "Content-Type": "video/mp4",
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunkSize,
+            'Content-Type': 'video/mp4',
         };
+
         res.writeHead(206, headers);
 
+        // ffmpeg로 스트리밍 처리
         const ffmpegStream = ffmpeg(videoPath)
             .outputOptions([
-                '-vf', `scale=-1:${resolution}`, 
-                '-c:v', 'libx264', 
-                '-c:a', 'aac', 
-                '-f', 'mp4',
-                '-movflags', 'frag_keyframe+empty_moov', 
-                '-preset', 'fast', 
+                '-vf', `scale=-1:${resolution}`, // 해상도 조정
+                '-c:v', 'libx264', // 비디오 코덱 설정
+                '-c:a', 'aac', // 오디오 코덱 설정
+                '-f', 'mp4', // 출력 형식 설정
+                '-movflags', 'frag_keyframe+empty_moov', // MP4 스트리밍 가능하게
+                '-preset', 'fast',
                 '-tune', 'zerolatency'
             ])
             .on('start', () => {
@@ -131,25 +137,18 @@ app.get('/api/stream', (req, res) => {
             })
             .on('end', () => {
                 console.log('트랜스코딩 완료');
-                res.end(); // 트랜스코딩이 완료되면 응답 종료
             })
             .on('error', (err) => {
-                console.error('트랜스코딩 중 오류 발생:', err.message);
+                console.error('트랜스코딩 오류:', err.message);
                 res.status(500).send('트랜스코딩 중 오류 발생');
             });
 
-        // 클라이언트 연결 종료 처리
-        let isStreamActive = true;  // 스트림이 살아있는지 여부
-        req.on('close', () => {
-            if (isStreamActive) {
-                console.log('클라이언트 연결 종료, 트랜스코딩 중단');
-                ffmpegStream.kill('SIGKILL'); // 스트리밍 중단 시 ffmpeg 종료
-            }
-        });
+        // ffmpeg 스트림을 res로 파이프 연결
+        ffmpegStream.pipe(res, { end: true });
 
-        ffmpegStream.pipe(res, { end: true }).on('close', () => {
-            isStreamActive = false; // 스트림이 성공적으로 종료됨을 확인
-            console.log('스트리밍 완료');
+        res.on('close', () => {
+            console.log('클라이언트 연결이 닫힘');
+            ffmpegStream.kill('SIGKILL');  // 클라이언트가 연결을 끊으면 ffmpeg 프로세스를 종료
         });
     });
 });
