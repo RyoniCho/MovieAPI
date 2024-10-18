@@ -92,52 +92,65 @@ app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution === '720p' ? 720 : 1080;
 
-    // 파일의 크기를 가져오기 위해 fs 모듈 사용
+    // 파일 크기 가져오기
     fs.stat(videoPath, (err, stats) => {
         if (err) {
             console.log('파일을 찾을 수 없습니다:', err);
             return res.status(404).send('파일을 찾을 수 없습니다.');
         }
 
-        // 클라이언트가 보낸 Range 헤더 확인
+        // 클라이언트의 Range 헤더 확인
         const range = req.headers.range;
         if (!range) {
             return res.status(400).send('Range 헤더가 필요합니다.');
         }
 
-        const CHUNK_SIZE = 10 ** 6; // 1MB씩 청크로 보냄
+        const CHUNK_SIZE = 10 ** 6; // 1MB 청크 크기
         const start = Number(range.replace(/\D/g, ""));
         const end = Math.min(start + CHUNK_SIZE, stats.size - 1);
 
         // 콘텐츠 길이 및 헤더 설정
         const contentLength = end - start + 1;
-        res.writeHead(206, {
+        const headers = {
             "Content-Range": `bytes ${start}-${end}/${stats.size}`,
             "Accept-Ranges": "bytes",
             "Content-Length": contentLength,
             "Content-Type": "video/mp4",
-        });
+        };
+        res.writeHead(206, headers);
 
-        // ffmpeg를 통해 트랜스코딩 및 스트리밍
-        ffmpeg(videoPath)
+        // ffmpeg로 트랜스코딩하여 스트리밍
+        const ffmpegStream = ffmpeg(videoPath)
             .outputOptions([
-                '-vf', `scale=-1:${resolution}`,
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                '-f', 'mp4',
-                '-movflags', 'frag_keyframe+empty_moov', // 빠른 시작을 위한 설정
-                '-preset', 'fast', // 빠른 트랜스코딩
-                '-tune', 'zerolatency' // 최소한의 지연을 위한 옵션
+                '-vf', `scale=-1:${resolution}`, // 해상도 조정
+                '-c:v', 'libx264',               // 비디오 코덱
+                '-c:a', 'aac',                   // 오디오 코덱
+                '-f', 'mp4',                     // 출력 형식
+                '-movflags', 'frag_keyframe+empty_moov', // 빠른 시작
+                '-preset', 'fast',               // 빠른 트랜스코딩
+                '-tune', 'zerolatency'           // 최소 지연 시간
             ])
-            .format('mp4')
+            .format('mp4');
+
+        // 스트리밍 오류 및 중단 처리
+        ffmpegStream
             .on('start', () => {
                 console.log('트랜스코딩 시작');
             })
             .on('error', (err) => {
-                console.error('트랜스코딩 오류:', err);
+                console.error('트랜스코딩 중 오류 발생:', err.message);
                 res.status(500).send('트랜스코딩 중 오류 발생');
             })
+            .on('end', () => {
+                console.log('트랜스코딩 완료');
+            })
             .pipe(res, { end: true });
+
+        // 스트림이 강제로 중단되었을 때 처리
+        req.on('close', () => {
+            console.log('클라이언트 연결 종료');
+            ffmpegStream.kill('SIGKILL'); // ffmpeg 프로세스 강제 종료
+        });
     });
 });
 
