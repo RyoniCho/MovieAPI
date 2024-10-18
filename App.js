@@ -90,7 +90,7 @@ const downloadContents = async (serialNumber,url)=>{
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer} = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMoviePath} = req.body;
 
         
         let imagePath;
@@ -162,6 +162,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             releaseDate,
             category,
             extraImage:extraImagePaths,
+            mainMovie : mainMoviePath,
     
     
         });
