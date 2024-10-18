@@ -9,6 +9,7 @@ const fs = require('fs');
 const authRoutes = require('./Auth');
 const axios = require('axios');
 const fs_extra = require('fs-extra');
+const ffmpeg = require('fluent-ffmpeg');
 
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
@@ -86,6 +87,31 @@ const downloadContents = async (serialNumber,url)=>{
 
     return filePath;
 }
+
+app.get('/api/stream',(req,res)=>{
+    const videoPath = req.query.file;
+    const resolution = req.query.resolution;
+
+    ffmpeg(videoPath)
+    .outputOptions([
+      '-vf', `scale=-1:${resolution === '720p' ? 720 : 1080}`, // 해상도 조정
+      '-c:v', 'libx264', // 비디오 코덱 설정
+      '-c:a', 'aac', // 오디오 코덱 설정
+      '-f', 'mp4' // 출력 형식 설정
+    ])
+    .on('start', () => {
+      console.log('트랜스코딩 시작');
+    })
+    .on('end', () => {
+      console.log('트랜스코딩 완료');
+    })
+    .on('error', (err) => {
+      console.error('트랜스코딩 오류:', err);
+      res.status(500).send('트랜스코딩 중 오류 발생');
+    })
+    .pipe(res, { end: true }); // 트랜스코딩된 비디오를 클라이언트로 스트리밍
+
+});
 
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
