@@ -119,6 +119,9 @@ app.get('/api/stream', (req, res) => {
         // HLS 파일이 완료되었을 때 응답을 전송
         res.sendFile(path.join(hlsPath, 'master.m3u8'));
       })
+      .on('stderr', (stderr) => {
+        console.log('stderr 로그:', stderr);
+      })
       .on('error', (err) => {
         console.error('HLS 트랜스코딩 오류:', err);
         if (!res.headersSent) {
