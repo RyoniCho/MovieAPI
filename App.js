@@ -88,7 +88,7 @@ const downloadContents = async (serialNumber,url)=>{
     return filePath;
 }
 
-app.use('/hls', express.static(path.join(__dirname, 'hls')));
+app.use('/api/hls', express.static(path.join(__dirname, 'hls')));
 
 app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
@@ -116,6 +116,8 @@ app.get('/api/stream', (req, res) => {
         '-hls_time', '10', // 10초 간격으로 분할
         '-hls_playlist_type', 'event',
         '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
+        '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}`
+        
       ])
       .output(path.join(hlsPath, 'master.m3u8'))
       .on('start', () => {
@@ -123,8 +125,8 @@ app.get('/api/stream', (req, res) => {
       })
       .on('end', () => {
         console.log('HLS 트랜스코딩 완료');
-        // HLS 파일이 완료되었을 때 응답을 전송
-        res.sendFile(path.join(hlsPath, 'master.m3u8'));
+    
+       
       })
       .on('stderr', (stderr) => {
         console.log('stderr 로그:', stderr);
@@ -136,6 +138,8 @@ app.get('/api/stream', (req, res) => {
         }
       })
       .run();
+
+      res.sendFile(path.join(hlsPath, 'master.m3u8'));
   });
 
 // 라우팅 설정
