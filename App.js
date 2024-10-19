@@ -88,6 +88,8 @@ const downloadContents = async (serialNumber,url)=>{
     return filePath;
 }
 
+app.use('/hls', express.static(path.join(__dirname, 'hls')));
+
 app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution;
