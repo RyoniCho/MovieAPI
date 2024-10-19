@@ -98,7 +98,7 @@ app.get('/api/stream', (req, res) => {
     fs_extra.ensureDirSync(hlsPath);
 
     // 이미 HLS 파일이 생성된 경우, 해당 파일을 제공
-    if (fs.existsSync(hlsPath)) {
+    if (fs.existsSync(path.join(hlsPath, 'master.m3u8'))) {
       return res.sendFile(path.join(hlsPath, 'master.m3u8'));
     } 
 
