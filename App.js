@@ -91,39 +91,41 @@ const downloadContents = async (serialNumber,url)=>{
 app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution;
-    const uploadPath = path.join(__dirname,'uploads')
-    const hlsPath = path.join(uploadPath, 'hls', `${path.basename(videoPath)}_${resolution}`);
+    
+    const hlsPath = path.join(__dirname, 'hls', `${path.basename(videoPath)}_${resolution}`);
     
     // 이미 HLS 파일이 생성된 경우, 해당 파일을 제공
     if (fs.existsSync(hlsPath)) {
-      res.sendFile(path.join(hlsPath, 'master.m3u8'));
-    } else {
-      // HLS 파일을 실시간으로 생성
-      ffmpeg(videoPath)
-        .outputOptions([
-          '-vf', `scale=-1:${resolution === '720p' ? 720 : 1080}`,
-          '-c:v', 'libx264',
-          '-crf', '20',
-          '-preset', 'fast',
-          '-hls_time', '10', // 10초 간격으로 분할
-          '-hls_playlist_type', 'event',
-          '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
-        ])
-        .output(path.join(hlsPath, 'master.m3u8'))
-        .on('start', () => {
-          console.log('HLS 트랜스코딩 시작');
-        })
-        .on('end', () => {
-          console.log('HLS 트랜스코딩 완료');
-        })
-        .on('error', (err) => {
-          console.error('HLS 트랜스코딩 오류:', err);
+      return res.sendFile(path.join(hlsPath, 'master.m3u8'));
+    } 
+  
+    // HLS 파일을 실시간으로 생성
+    ffmpeg(videoPath)
+      .outputOptions([
+        '-vf', `scale=-1:${resolution === '720p' ? 720 : 1080}`,
+        '-c:v', 'libx264',
+        '-crf', '20',
+        '-preset', 'veryfast',
+        '-hls_time', '10', // 10초 간격으로 분할
+        '-hls_playlist_type', 'event',
+        '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
+      ])
+      .output(path.join(hlsPath, 'master.m3u8'))
+      .on('start', () => {
+        console.log('HLS 트랜스코딩 시작');
+      })
+      .on('end', () => {
+        console.log('HLS 트랜스코딩 완료');
+        // HLS 파일이 완료되었을 때 응답을 전송
+        res.sendFile(path.join(hlsPath, 'master.m3u8'));
+      })
+      .on('error', (err) => {
+        console.error('HLS 트랜스코딩 오류:', err);
+        if (!res.headersSent) {
           res.status(500).send('HLS 트랜스코딩 중 오류 발생');
-        })
-        .run();
-      
-      res.sendFile(path.join(hlsPath, 'master.m3u8'));
-    }
+        }
+      })
+      .run();
   });
 
 // 라우팅 설정
