@@ -92,15 +92,17 @@ app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution;
     
-    const hlsPath = path.join(__dirname, 'hls', `${path.basename(videoPath)}_${resolution}`);
+    const hlsPath = path.join(__dirname, 'hls', `${path.basename(videoPath, path.extname(videoPath))}_${resolution}`);
     
     // hlsPath 폴더가 없으면 생성
     fs_extra.ensureDirSync(hlsPath);
-    
+
     // 이미 HLS 파일이 생성된 경우, 해당 파일을 제공
     if (fs.existsSync(hlsPath)) {
       return res.sendFile(path.join(hlsPath, 'master.m3u8'));
     } 
+
+    console.log("ffmpeg start");
   
     // HLS 파일을 실시간으로 생성
     ffmpeg(videoPath)
