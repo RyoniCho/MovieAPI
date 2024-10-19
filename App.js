@@ -91,8 +91,8 @@ const downloadContents = async (serialNumber,url)=>{
 app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution;
-  
-    const hlsPath = path.join(__dirname, 'hls', `${path.basename(videoPath)}_${resolution}`);
+    const uploadPath = path.join(__dirname,'uploads')
+    const hlsPath = path.join(uploadPath, 'hls', `${path.basename(videoPath)}_${resolution}`);
     
     // 이미 HLS 파일이 생성된 경우, 해당 파일을 제공
     if (fs.existsSync(hlsPath)) {
