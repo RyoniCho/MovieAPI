@@ -90,68 +90,41 @@ const downloadContents = async (serialNumber,url)=>{
 
 app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
-    const resolution = req.query.resolution === '720p' ? 720 : 1080;
-
-    fs.stat(videoPath, (err, stats) => {
-        if (err) {
-            console.error('파일을 찾을 수 없습니다:', err);
-            return res.status(404).send('파일을 찾을 수 없습니다.');
-        }
-
-        const range = req.headers.range;
-        if (!range) {
-            return res.status(400).send('Range 헤더가 필요합니다.');
-        }
-
-        // Range 헤더에서 청크 크기 추출
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
-
-        const chunkSize = (end - start) + 1;
-        const fileSize = stats.size;
-
-        // 응답 헤더 설정 (한 번만 설정)
-        const headers = {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunkSize,
-            'Content-Type': 'video/mp4',
-        };
-
-        res.writeHead(206, headers);
-
-        // ffmpeg로 스트리밍 처리
-        const ffmpegStream = ffmpeg(videoPath)
-            .outputOptions([
-                '-vf', `scale=-1:${resolution}`, // 해상도 조정
-                '-c:v', 'libx264', // 비디오 코덱 설정
-                '-c:a', 'aac', // 오디오 코덱 설정
-                '-f', 'mp4', // 출력 형식 설정
-                '-movflags', 'frag_keyframe+empty_moov', // MP4 스트리밍 가능하게
-                '-preset', 'fast',
-                '-tune', 'zerolatency'
-            ])
-            .on('start', () => {
-                console.log('트랜스코딩 시작');
-            })
-            .on('end', () => {
-                console.log('트랜스코딩 완료');
-            })
-            .on('error', (err) => {
-                console.error('트랜스코딩 오류:', err.message);
-                res.status(500).send('트랜스코딩 중 오류 발생');
-            });
-
-        // ffmpeg 스트림을 res로 파이프 연결
-        ffmpegStream.pipe(res, { end: true });
-
-        res.on('close', () => {
-            console.log('클라이언트 연결이 닫힘');
-            ffmpegStream.kill('SIGKILL');  // 클라이언트가 연결을 끊으면 ffmpeg 프로세스를 종료
-        });
-    });
-});
+    const resolution = req.query.resolution;
+  
+    const hlsPath = path.join(__dirname, 'hls', `${path.basename(videoPath)}_${resolution}`);
+    
+    // 이미 HLS 파일이 생성된 경우, 해당 파일을 제공
+    if (fs.existsSync(hlsPath)) {
+      res.sendFile(path.join(hlsPath, 'master.m3u8'));
+    } else {
+      // HLS 파일을 실시간으로 생성
+      ffmpeg(videoPath)
+        .outputOptions([
+          '-vf', `scale=-1:${resolution === '720p' ? 720 : 1080}`,
+          '-c:v', 'libx264',
+          '-crf', '20',
+          '-preset', 'fast',
+          '-hls_time', '10', // 10초 간격으로 분할
+          '-hls_playlist_type', 'event',
+          '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
+        ])
+        .output(path.join(hlsPath, 'master.m3u8'))
+        .on('start', () => {
+          console.log('HLS 트랜스코딩 시작');
+        })
+        .on('end', () => {
+          console.log('HLS 트랜스코딩 완료');
+        })
+        .on('error', (err) => {
+          console.error('HLS 트랜스코딩 오류:', err);
+          res.status(500).send('HLS 트랜스코딩 중 오류 발생');
+        })
+        .run();
+      
+      res.sendFile(path.join(hlsPath, 'master.m3u8'));
+    }
+  });
 
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
