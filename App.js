@@ -116,7 +116,7 @@ app.get('/api/stream', (req, res) => {
         '-hls_time', '10', // 10초 간격으로 분할
         '-hls_playlist_type', 'event',
         '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
-        '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}`
+        '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
         
       ])
       .output(path.join(hlsPath, 'master.m3u8'))
