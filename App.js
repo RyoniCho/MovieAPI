@@ -207,6 +207,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
         }
         
         let mainMovieSubPath = '';
+        console.log(`mainMoviePath:${mainMoviePath}`);
         if(mainMoviePath!=='')
         {
            
@@ -219,6 +220,10 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             else{
                 console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
             }
+        }
+        else
+        {
+            console.log("main movie path is empty");
         }
        
     
