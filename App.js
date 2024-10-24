@@ -369,10 +369,10 @@ app.put('/api/movies/:id',authMiddleware, async (req, res) => {
         //자막정보 반영
         let mainMovieSubPath = '';
        
-        if(updatedData.mainMoviePath!=='')
+        if(updatedData.mainMovie!=='')
         {
            
-            mainMovieSubPath = updatedData.mainMoviePath.replace(".mp4",".vtt");
+            mainMovieSubPath = updatedData.mainMovie.replace(".mp4",".vtt");
             if(!fs.existsSync(path.join(__dirname, mainMovieSubPath)))
             {
                 mainMovieSubPath='';
