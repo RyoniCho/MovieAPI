@@ -214,6 +214,10 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             if(!fs.existsSync(path.join(__dirname, mainMovieSubPath)))
             {
                 mainMovieSubPath='';
+                console.log(`not exist: ${path.join(__dirname, mainMovieSubPath)}`);
+            }
+            else{
+                console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
             }
         }
        
