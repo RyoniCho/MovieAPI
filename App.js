@@ -221,10 +221,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
                 console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
             }
         }
-        else
-        {
-            console.log("main movie path is empty");
-        }
+       
        
     
         const movie = new Movie(
@@ -368,6 +365,26 @@ app.put('/api/movies/:id',authMiddleware, async (req, res) => {
     try {
         const movieId = req.params.id;
         const updatedData = req.body;
+
+        //자막정보 반영
+        let mainMovieSubPath = '';
+       
+        if(updatedData.mainMoviePath!=='')
+        {
+           
+            mainMovieSubPath = updatedData.mainMoviePath.replace(".mp4",".vtt");
+            if(!fs.existsSync(path.join(__dirname, mainMovieSubPath)))
+            {
+                mainMovieSubPath='';
+                console.log(`not exist: ${path.join(__dirname, mainMovieSubPath)}`);
+            }
+            else{
+                console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
+                updatedData.mainMovieSub = mainMovieSubPath;
+            }
+        }
+
+        
 
         // 영화 정보 업데이트
         const updatedMovie = await Movie.findByIdAndUpdate(movieId, updatedData, { new: true });
