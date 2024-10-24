@@ -125,6 +125,9 @@ app.get('/api/stream', (req, res) => {
       })
       .on('end', () => {
         console.log('HLS 트랜스코딩 완료');
+       
+        fs.unlinkSync(videoPath);
+        console.log(`${videoPath} : file removed`);
     
        
       })
