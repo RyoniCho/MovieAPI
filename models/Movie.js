@@ -9,6 +9,7 @@ const movieSchema = new mongoose.Schema({
   extraImage:{type: [String],default:[]},  //Extra Image
   trailer: { type: String, required: true },    // 예고편 영상 파일 경로 (필수)
   mainMovie: {type: String, default:''}, // 영화 메인 본펀 경로 (있을경우에만 사용한다.)
+  mainMovieSub:{type:String, default:''}, // 영화 메인 본편 자막 경로(있을경우에만 사용.)
   plexRegistered: { type: Boolean, default: false }, //plex에 등록된건지
   description: { type: String, default: '' },   // 영화 설명 (선택)
   releaseDate: { type: Date, default: Date.now },  // 개봉일 (선택)

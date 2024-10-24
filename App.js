@@ -206,6 +206,16 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             }
         }
         
+        let mainMovieSubPath = '';
+        if(mainMoviePath!=='')
+        {
+           
+            mainMovieSubPath = mainMoviePath.replace(".mp4",".vtt");
+            if(!fs.existsSync(path.join(__dirname, mainMovieSubPath)))
+            {
+                mainMovieSubPath='';
+            }
+        }
        
     
         const movie = new Movie(
@@ -221,6 +231,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             category,
             extraImage:extraImagePaths,
             mainMovie : mainMoviePath,
+            mainMovieSub: mainMovieSubPath,
     
     
         });
