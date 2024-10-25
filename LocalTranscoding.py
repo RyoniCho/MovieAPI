@@ -15,7 +15,7 @@ def transcode_to_hls(input_file, output_folder, resolution="720p"):
 
     # FFmpeg 명령어
     ffmpeg_cmd = [
-        'ffmpeg', '-i', input_file,
+        'ffmpeg', '-i', f'"{input_file}"',
         '-vf', f"scale=-1:{720 if resolution == '720p' else 1080}",  # 해상도 설정
         '-c:v', 'libx264', 
         '-crf', '20',
@@ -23,7 +23,7 @@ def transcode_to_hls(input_file, output_folder, resolution="720p"):
         '-hls_time', '10',  # 10초 간격으로 세그먼트 생성
         '-hls_playlist_type', 'event',
         '-hls_segment_filename', os.path.join(hls_output_path, 'segment_%03d.ts'),
-        '-hls_base_url', f"hls/{base_name}_{resolution}/",
+        '-hls_base_url', f'"hls/{base_name}_{resolution}/"',
         os.path.join(hls_output_path, 'master.m3u8')  # 최종 출력 파일
     ]
 
