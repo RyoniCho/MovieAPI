@@ -34,14 +34,31 @@ def transcode_to_hls(input_file, output_folder, resolution="720p"):
         print(f"Completed: {input_file}")
     except subprocess.CalledProcessError as e:
         print(f"Error transcoding {input_file}: {e}")
+def ConvertSubscription(input_file, output_folder):
+    base_name = Path(input_file).stem
+
+    command = f'ffmpeg -i "{input_file}" "{os.path.join(output_folder,base_name+".vtt")}"'
+
+        # FFmpeg 실행
+    try:
+        print(f"Convert {input_file} to vtt..")
+        subprocess.run(command, check=True)
+        print(f"Completed: {input_file}->vtt")
+    except subprocess.CalledProcessError as e:
+        print(f"Error Convert Subscription {input_file}: {e}")
+    pass
 
 # 폴더 내 모든 파일에 대해 HLS 트랜스코딩
 def transcode_folder(input_folder, output_folder, resolution="720p"):
     # 입력 폴더에서 비디오 파일을 찾음 (mp4 확장자 기준으로 검색)
-    for file_name in os.listdir(input_folder):
-        input_file = os.path.join(input_folder, file_name)
-        if os.path.isfile(input_file) and file_name.endswith(('.mp4', '.mkv', '.avi', '.mov')):
-            transcode_to_hls(input_file, output_folder, resolution)
+  
+    for root, dirs, files in os.walk(input_folder):
+        for file_name in files:
+            input_file = os.path.join(root, file_name)
+            if os.path.isfile(input_file) and file_name.endswith(('.mp4', '.mkv', '.avi', '.mov')):
+                transcode_to_hls(input_file, output_folder, resolution)
+            elif os.path.isfile(input_file) and file_name.endswith(('.smi','.srt')):
+                ConvertSubscription(input_file, output_folder)
 
 # 파이썬 명령어 라인 인터페이스(CLI) 설정
 if __name__ == "__main__":
