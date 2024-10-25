@@ -148,7 +148,7 @@ app.get('/api/stream', (req, res) => {
 // 라우팅 설정
 app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMoviePath} = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMoviePath,subscriptExist} = req.body;
 
         
         let imagePath;
@@ -221,6 +221,8 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
                 console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
             }
         }
+
+        
        
        
     
@@ -238,6 +240,8 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
             extraImage:extraImagePaths,
             mainMovie : mainMoviePath,
             mainMovieSub: mainMovieSubPath,
+            subscriptExist
+            
     
     
         });
