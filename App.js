@@ -306,7 +306,7 @@ app.delete('/api/movies/:id',authMiddleware, async (req, res) => {
 
 
 // 모든 영화 정보를 가져오는 API
-app.get('/api/movies', async (req, res) => {
+app.get('/api/movies',authMiddleware, async (req, res) => {
     const { serialNumber, actor, owned, subscriptExist, category, sortOrder, page, pageSize } = req.query;
     const filter = {};
 
