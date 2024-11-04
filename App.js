@@ -357,7 +357,8 @@ app.get('/api/movies', async (req, res) => {
         filter.category = category;
     }
 
-    console.log(filter);
+    console.log(`page: ${page}/ filter: ${filter}`);
+    
 
     try {
         const sort = sortOrder === 'asc' ? { releaseDate: 1 } : { releaseDate: -1 };
