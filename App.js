@@ -321,18 +321,27 @@ app.get('/api/movies', async (req, res) => {
         if(owned==="all")
         {
             filter.plexRegistered=true;
-            filter.mainMovie=true;
-
+            // mainMovie 필드가 존재하고 빈 값이 아닌 경우
+            filter.mainMovie = { $exists: true, $ne: "" };
         }
         else if(owned==="false")
         {
             filter.plexRegistered = false;
-            filter.mainMovie=false;
+            // mainMovie 필드가 존재하지 않거나 빈 값인 경우
+            filter.mainMovie = { $in: [null, ""] };
         }
         else
         {
-            filter.plexRegistered = owned === 'plex';
-            filter.mainMovie = owned === 'web';
+          
+            if (owned === "plex") {
+               
+                filter.plexRegistered = true;
+            }
+
+            if (owned === "web") {
+                // mainMovie 필드가 존재하고 빈 값이 아닌 경우
+                filter.mainMovie = { $exists: true, $ne: "" };
+            } 
         }
 
     }
