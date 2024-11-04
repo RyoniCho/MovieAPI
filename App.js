@@ -307,20 +307,60 @@ app.delete('/api/movies/:id',authMiddleware, async (req, res) => {
 
 // 모든 영화 정보를 가져오는 API
 app.get('/api/movies', async (req, res) => {
-    const { serialNumber } = req.query;
+    const { serialNumber, actor, owned, subscriptExist, category, sortOrder, page, pageSize } = req.query;
+    const filter = {};
+
+    if (serialNumber) {
+        const regex = new RegExp(serialNumber, 'i'); // 대소문자 구분 없이 품번 검색
+        filter.serialNumber = regex;
+    }
+    if (actor) {
+        filter.actor = actor;
+    }
+    if (owned) {
+        if(owned==="all")
+        {
+            filter.plexRegistered=true;
+            filter.mainMovie=true;
+
+        }
+        else if(owned==="false")
+        {
+            filter.plexRegistered = false;
+            filter.mainMovie=false;
+        }
+        else
+        {
+            filter.plexRegistered = owned === 'plex';
+            filter.mainMovie = owned === 'web';
+        }
+
+    }
+   
+    if (subscriptExist) {
+
+        if(subscriptExist !== "all")
+        {
+            filter.subscriptExist = subscriptExist === 'true';
+        }
+    }
+    if (category) {
+        filter.category = category;
+    }
+
+    console.log(filter);
 
     try {
-        let movies;
-        if (serialNumber) {
-            const regex = new RegExp(serialNumber, 'i'); // 대소문자 구분 없이 품번 검색
-            movies = await Movie.find({ serialNumber: regex });
-        } else {
-            movies = await Movie.find(); // 모든 영화 정보를 MongoDB에서 가져옴
-        }
+        const sort = sortOrder === 'asc' ? { releaseDate: 1 } : { releaseDate: -1 };
+        const movies = await Movie.find(filter)
+                                .sort(sort)
+                                .skip((page - 1) * pageSize)
+                                .limit(parseInt(pageSize));
+                             
         res.json(movies);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch movies' });
-        console.log(err)
+        console.log(err);
     }
 });
 
