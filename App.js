@@ -359,7 +359,7 @@ app.get('/api/movies', async (req, res) => {
 
     console.log(`page: ${page}`);
 
-    console.log('Filter'+filter)
+    console.log(filter)
     
 
     try {
