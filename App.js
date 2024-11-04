@@ -357,7 +357,9 @@ app.get('/api/movies', async (req, res) => {
         filter.category = category;
     }
 
-    console.log(`page: ${page}/ filter: ${filter}`);
+    console.log(`page: ${page}`);
+
+    console.log('Filter'+filter)
     
 
     try {
