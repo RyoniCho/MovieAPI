@@ -318,13 +318,8 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
         filter.actor = actor;
     }
     if (owned) {
-        if(owned==="all")
-        {
-            filter.plexRegistered=true;
-            // mainMovie 필드가 존재하고 빈 값이 아닌 경우
-            filter.mainMovie = { $exists: true, $ne: "" };
-        }
-        else if(owned==="false")
+       
+        if(owned==="false")
         {
             filter.plexRegistered = false;
             // mainMovie 필드가 존재하지 않거나 빈 값인 경우
