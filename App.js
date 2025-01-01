@@ -253,7 +253,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
                         const fileName = serialNumber +"_"+ Date.now()+ ".mp4";
                         const outputFilePath = path.join('uploads', fileName);
 
-                        await handleHLSDownload(transformSubtituteTrailerUrl(urlTrailer));
+                        await handleHLSDownload(transformSubtituteTrailerUrl(urlTrailer),outputFilePath);
 
                         trailerPath= outputFilePath;
                     }
