@@ -103,14 +103,21 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
 
       const absoluteOutputPath = path.resolve(__dirname, outputFilePath);
 
+      // Base URL 추출 (m3u8Url에서  .m3u8 앞부분까지 가져옴)
+     const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+
   
       // 3. ffmpeg로 MP4 변환
       return new Promise((resolve, reject) => {
         ffmpeg(tempM3U8Path)
+          .inputOptions([
+            '-protocol_whitelist', 'file,http,https,tcp,tls', // 필요한 프로토콜 허용
+          ])
           .outputOptions([
             '-c:v', 'libx264', // 비디오 코덱 설정
             '-c:a', 'aac',     // 오디오 코덱 설정
-            '-strict', 'experimental'
+            '-strict', 'experimental',
+            '-hls_base_url', baseUrl, // Base URL 설정
           ])
           .on('start', () => console.log('HLS to MP4 conversion started'))
           .on('end', () => {
