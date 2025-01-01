@@ -88,6 +88,68 @@ const downloadContents = async (serialNumber,url)=>{
     return filePath;
 }
 
+async function handleHLSDownload(m3u8Url, outputFilePath) {
+    try {
+
+    
+
+      // 1. m3u8 파일 다운로드
+      const response = await axios.get(m3u8Url);
+      const m3u8Content = response.data;
+  
+      // 2. m3u8 파일 저장
+      const tempM3U8Path = path.join(__dirname, 'temp.m3u8');
+      await fsExtra.outputFile(tempM3U8Path, m3u8Content);
+  
+      // 3. ffmpeg로 MP4 변환
+      return new Promise((resolve, reject) => {
+        ffmpeg(tempM3U8Path)
+          .outputOptions([
+            '-c:v', 'libx264', // 비디오 코덱 설정
+            '-c:a', 'aac',     // 오디오 코덱 설정
+            '-strict', 'experimental'
+          ])
+          .on('start', () => console.log('HLS to MP4 conversion started'))
+          .on('end', () => {
+            console.log('HLS to MP4 conversion completed');
+            fs.unlinkSync(tempM3U8Path); // 임시 m3u8 파일 삭제
+            resolve(outputFilePath);
+          })
+          .on('error', (err) => {
+            console.error('Error during conversion:', err);
+            reject(err);
+          })
+          .save(outputFilePath); // 최종 MP4 파일 저장 경로
+      });
+    } catch (err) {
+      console.error('Error handling HLS download:', err);
+      throw err;
+    }
+  }
+
+  function transformSubtituteTrailerUrl(inputUrl) {
+    try {
+      // 1. URL을 파싱
+      const url = new URL(inputUrl);
+  
+      // 2. 새로운 도메인 및 경로 설정
+      url.hostname = "media.javtrailers.com";
+      url.pathname = url.pathname.replace(/\/litevideo\/freepv\/.*?\//, "/hlsvideo/freepv/");
+  
+      // 3. 마지막 경로를 playlist.m3u8로 변경
+      const pathParts = url.pathname.split('/');
+      pathParts[pathParts.length - 1] = "playlist.m3u8";
+      url.pathname = pathParts.join('/');
+  
+      return url.toString();
+    } catch (error) {
+      console.error("Invalid URL:", error);
+      return null;
+    }
+  }
+  
+
+
 app.use('/api/hls', express.static(path.join(__dirname, 'hls')));
 
 app.get('/api/stream', (req, res) => {
@@ -176,8 +238,23 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
                 }
                 catch(err)
                 {
-                    res.status(500).json({ error: 'Failed to update movie' });
-                    console.log(err)
+
+                    try
+                    {
+                            //OutputFile Path
+                        const fileName = serialNumber +"_"+ Date.now()+ ".mp4";
+                        const outputFilePath = path.join('uploads', fileName);
+
+                        await handleHLSDownload(transformSubtituteTrailerUrl(urlTrailer));
+
+                        trailerPath= outputFilePath;
+                    }
+                    catch(err)
+                    {
+                        res.status(500).json({ error: 'Failed to update movie' });
+                        console.log(err)
+                    }
+                    
                 }
                
             }
