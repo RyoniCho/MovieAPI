@@ -101,7 +101,8 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
       const tempM3U8Path = path.join(__dirname, 'temp.m3u8');
       await fs_extra.outputFile(tempM3U8Path, m3u8Content);
 
-      const normalizedPath = outputFilePath.replace(/\\/g, '/');
+      const absoluteOutputPath = path.resolve(__dirname, outputFilePath);
+
   
       // 3. ffmpeg로 MP4 변환
       return new Promise((resolve, reject) => {
@@ -115,13 +116,13 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
           .on('end', () => {
             console.log('HLS to MP4 conversion completed');
             fs.unlinkSync(tempM3U8Path); // 임시 m3u8 파일 삭제
-            resolve(normalizedPath);
+            resolve(absoluteOutputPath);
           })
           .on('error', (err) => {
             console.error('Error during conversion:', err);
             reject(err);
           })
-          .save(normalizedPath); // 최종 MP4 파일 저장 경로
+          .save(absoluteOutputPath); // 최종 MP4 파일 저장 경로
       });
     } catch (err) {
       console.error('Error handling HLS download:', err);
