@@ -241,6 +241,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
 
                     try
                     {
+                        console.log("Try Download JAV trailer HLS")
                             //OutputFile Path
                         const fileName = serialNumber +"_"+ Date.now()+ ".mp4";
                         const outputFilePath = path.join('uploads', fileName);
