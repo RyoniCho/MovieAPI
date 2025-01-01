@@ -142,26 +142,26 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
 
   function transformSubtituteTrailerUrl(inputUrl) {
     try {
-       // 1. URL을 파싱
-    const url = new URL(inputUrl);
+    
+     // 1. URL을 파싱
+     const url = new URL(inputUrl);
 
-    // 2. 새로운 도메인 설정
-    url.hostname = "media.javtrailers.com";
+     // 2. 새로운 도메인 설정
+     url.hostname = "media.javtrailers.com";
+ 
+     // 3. 경로 수정
+     const pathParts = url.pathname.split('/'); // 경로를 '/' 기준으로 분리
+     const originalFileName = pathParts[pathParts.length - 1]; // 기존 파일명 추출
+ 
+     // 4. 기존 파일명에서 '_mhb_w.mp4' 제거하고 '_hhb.m3u8' 추가
+     const newFileName = originalFileName.replace('_mhb_w.mp4', 'hhb.m3u8');
+     pathParts[pathParts.length - 1] = newFileName; // 수정된 파일명으로 교체
+ 
+     // 5. 새로운 경로를 URL에 반영
+     url.pathname = pathParts.join('/');
+ 
+     return url.toString();
 
-    // 3. 경로 수정
-    const pathParts = url.pathname.split('/'); // 경로를 '/' 기준으로 분리
-    const newPathParts = [
-      '', // 루트 경로
-      'hlsvideo', // 새로운 경로의 첫 번째 부분
-      'freepv', // 'freepv' 유지
-      ...pathParts.slice(3, -1), // 기존 경로에서 'litevideo/freepv/' 이후부터 마지막 파일명 전까지 유지
-    ];
-    newPathParts.push('playlist.m3u8'); // 마지막 파일명을 'playlist.m3u8'로 변경
-
-    // 4. 새로운 경로를 URL에 반영
-    url.pathname = newPathParts.join('/');
-
-    return url.toString();
     } catch (error) {
       console.error("Invalid URL:", error);
       return null;
