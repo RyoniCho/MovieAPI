@@ -122,6 +122,9 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
             console.error('Error during conversion:', err);
             reject(err);
           })
+          .on('stderr', (stderrLine) => {
+            console.log('FFmpeg stderr:', stderrLine);
+          })
           .save(absoluteOutputPath); // 최종 MP4 파일 저장 경로
       });
     } catch (err) {
