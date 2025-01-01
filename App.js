@@ -151,6 +151,10 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
  
      // 3. 경로 수정
      const pathParts = url.pathname.split('/'); // 경로를 '/' 기준으로 분리
+      // 기존 'litevideo'를 'hlsvideo/freepv'로 대체
+     pathParts[1] = 'hlsvideo';
+     pathParts[2] = 'freepv';
+     
      const originalFileName = pathParts[pathParts.length - 1]; // 기존 파일명 추출
  
      // 4. 기존 파일명에서 '_mhb_w.mp4' 제거하고 '_hhb.m3u8' 추가
