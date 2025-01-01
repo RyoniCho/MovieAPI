@@ -87,6 +87,16 @@ const downloadContents = async (serialNumber,url)=>{
 
     return filePath;
 }
+function updateM3U8Paths(m3u8FilePath, baseUrl) {
+    try {
+      const content = fs.readFileSync(m3u8FilePath, 'utf-8');
+      const updatedContent = content.replace(/^(?!#)(.+\.ts)$/gm, `${baseUrl}$1`);
+      fs.writeFileSync(m3u8FilePath, updatedContent, 'utf-8');
+      console.log(`Updated .m3u8 file with Base URL: ${baseUrl}`);
+    } catch (err) {
+      console.error(`Failed to update .m3u8 file: ${err.message}`);
+    }
+  }
 
 async function handleHLSDownload(m3u8Url, outputFilePath) {
     try {
@@ -106,6 +116,7 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
       // Base URL 추출 (m3u8Url에서  .m3u8 앞부분까지 가져옴)
      const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
 
+     updateM3U8Paths(tempM3U8Path,baseUrl);
   
       // 3. ffmpeg로 MP4 변환
       return new Promise((resolve, reject) => {
@@ -154,7 +165,7 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
       // 기존 'litevideo'를 'hlsvideo/freepv'로 대체
      pathParts[1] = 'hlsvideo';
      pathParts[2] = 'freepv';
-     
+
      const originalFileName = pathParts[pathParts.length - 1]; // 기존 파일명 추출
  
      // 4. 기존 파일명에서 '_mhb_w.mp4' 제거하고 '_hhb.m3u8' 추가
