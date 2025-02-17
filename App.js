@@ -170,7 +170,16 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
  
      // 4. 기존 파일명에서 '_mhb_w.mp4' 제거하고 '_hhb.m3u8' 추가
      const newFileName = originalFileName.replace('_mhb_w.mp4', 'hhb.m3u8');
-     pathParts[pathParts.length - 1] = newFileName; // 수정된 파일명으로 교체
+     //FALENO
+     if(originalFileName.includes('fsd'))
+     {
+        pathParts[pathParts.length - 1] = originalFileName.replace('.mp4','.m3u8'); 
+     }
+     else{
+
+        pathParts[pathParts.length - 1] = newFileName; // 수정된 파일명으로 교체
+     }
+
  
      // 5. 새로운 경로를 URL에 반영
      url.pathname = pathParts.join('/');
