@@ -191,6 +191,9 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
       const lines = fileContent.split('\n'); // 한 줄씩 읽기
 
       for (const line of lines) {
+        const cleanedLine = line.replace(/\r/g, '').trim(); // CRLF 제거 및 공백 제거
+        if (!cleanedLine) continue; // 빈 줄 건너뛰기
+        
         const [fileSerialNumber, exceptionUrl] = line.split(','); // 쉼표로 분리
         if (fileSerialNumber.trim() === serialNumber.trim()) {
           return exceptionUrl.trim(); // 예외 URL 반환
