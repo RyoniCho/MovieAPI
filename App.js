@@ -151,7 +151,7 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
     }
   }
 
-  function transformSubtituteTrailerUrl(inputUrl) {
+  function transformSubtituteTrailerUrl(inputUrl,serialNumber) {
     try {
     
      // 1. URL을 파싱
@@ -183,6 +183,20 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
  
      // 5. 새로운 경로를 URL에 반영
      url.pathname = pathParts.join('/');
+
+     // 6. URL 예외 처리: url_except.txt 파일 읽기
+    const exceptionFilePath = path.join(__dirname, 'trailer_except.txt'); // 예외 파일 경로
+    if (fs.existsSync(exceptionFilePath)) {
+      const fileContent = fs.readFileSync(exceptionFilePath, 'utf-8');
+      const lines = fileContent.split('\n'); // 한 줄씩 읽기
+
+      for (const line of lines) {
+        const [fileSerialNumber, exceptionUrl] = line.split(','); // 쉼표로 분리
+        if (fileSerialNumber.trim() === serialNumber.trim()) {
+          return exceptionUrl.trim(); // 예외 URL 반환
+        }
+      }
+    }
  
      return url.toString();
 
@@ -290,7 +304,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
                         const fileName = serialNumber +"_"+ Date.now()+ ".mp4";
                         const outputFilePath = path.join('uploads', fileName);
 
-                        await handleHLSDownload(transformSubtituteTrailerUrl(urlTrailer),outputFilePath);
+                        await handleHLSDownload(transformSubtituteTrailerUrl(urlTrailer,serialNumber),outputFilePath);
 
                         trailerPath= outputFilePath;
                     }
