@@ -71,11 +71,19 @@ const authMiddleware = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.userId = decoded.userId;
+        req.userRole = decoded.role; // role 저장
         next();
     } catch (err) {
         res.status(401).json({ error: 'Invalid token' });
     }
 };
+
+function requireAdmin(req, res, next) {
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ error: '관리자만 접근 가능합니다.' });
+    }
+    next();
+  }
 
 const downloadContents = async (serialNumber,url)=>{
     console.log("downloadcontents:"+url);
@@ -269,7 +277,7 @@ app.get('/api/stream', (req, res) => {
   });
 
 // 라우팅 설정
-app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
+app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
     try{
         const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMoviePath,subscriptExist} = req.body;
 
@@ -396,7 +404,7 @@ app.post('/api/movies',authMiddleware, upload.fields([{ name: 'image' }, { name:
 });
 
 // 영화 삭제 API
-app.delete('/api/movies/:id',authMiddleware, async (req, res) => {
+app.delete('/api/movies/:id',authMiddleware,requireAdmin, async (req, res) => {
     try {
         const movie = await Movie.findByIdAndDelete(req.params.id);
         if (!movie) {
@@ -536,7 +544,7 @@ app.get('/api/actors', async (req, res) => {
 });
 
 // 새로운 배우 추가
-app.post('/api/actors', authMiddleware,async (req, res) => {
+app.post('/api/actors', authMiddleware,requireAdmin,async (req, res) => {
     const { name } = req.body;
 
     const actor = new Actor({ name });
@@ -551,7 +559,7 @@ app.post('/api/actors', authMiddleware,async (req, res) => {
 });
 
 // 영화정보 업데이트
-app.put('/api/movies/:id',authMiddleware, async (req, res) => {
+app.put('/api/movies/:id',authMiddleware,requireAdmin, async (req, res) => {
     try {
         const movieId = req.params.id;
         const updatedData = req.body;

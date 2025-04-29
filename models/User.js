@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    role: { type: String, enum: ['admin', 'guest'], default: 'guest' }, // 권한 추가
 });
 
 UserSchema.pre('save', async function(next) {
