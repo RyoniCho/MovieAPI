@@ -13,6 +13,7 @@ const ffmpeg = require('fluent-ffmpeg');
 
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
+const fetch = require('node-fetch');
 
 const app = express();
 
@@ -158,64 +159,92 @@ async function handleHLSDownload(m3u8Url, outputFilePath) {
       throw err;
     }
   }
+  
+function transformSubtituteTrailerUrl(inputUrl, serialNumber) {
+  try {
+    const url = new URL(inputUrl);
 
-  function transformSubtituteTrailerUrl(inputUrl,serialNumber) {
-    try {
-    
-     // 1. URL을 파싱
-     const url = new URL(inputUrl);
+    url.hostname = "media.javtrailers.com";
 
-     // 2. 새로운 도메인 설정
-     url.hostname = "media.javtrailers.com";
- 
-     // 3. 경로 수정
-     const pathParts = url.pathname.split('/'); // 경로를 '/' 기준으로 분리
-      // 기존 'litevideo'를 'hlsvideo/freepv'로 대체
-     pathParts[1] = 'hlsvideo';
-     pathParts[2] = 'freepv';
+    const pathParts = url.pathname.split('/');
+    pathParts[1] = 'hlsvideo';
+    pathParts[2] = 'freepv';
 
-     const originalFileName = pathParts[pathParts.length - 1]; // 기존 파일명 추출
- 
-     // 4. 기존 파일명에서 '_mhb_w.mp4' 제거하고 '_hhb.m3u8' 추가
-     const newFileName = originalFileName.replace('_mhb_w.mp4', 'hhb.m3u8');
-     //FALENO
-     if(originalFileName.includes('fsd'))
-     {
-        pathParts[pathParts.length - 1] = originalFileName.replace('.mp4','.m3u8'); 
-     }
-     else{
+    const originalFileName = pathParts[pathParts.length - 1];
 
-        pathParts[pathParts.length - 1] = newFileName; // 수정된 파일명으로 교체
-     }
+    let finalFileName;
 
- 
-     // 5. 새로운 경로를 URL에 반영
-     url.pathname = pathParts.join('/');
+    if (originalFileName.includes('fsd')) {
+      finalFileName = originalFileName.replace('.mp4', '.m3u8');
+    } else {
+      finalFileName = 'playlist.m3u8';
+    }
 
-     // 6. URL 예외 처리: url_except.txt 파일 읽기
-    const exceptionFilePath = path.join(__dirname, 'trailer_except.txt'); // 예외 파일 경로
+    pathParts[pathParts.length - 1] = finalFileName;
+
+    // 예외 처리
+    const exceptionFilePath = path.join(__dirname, 'trailer_except.txt');
     if (fs.existsSync(exceptionFilePath)) {
       const fileContent = fs.readFileSync(exceptionFilePath, 'utf-8');
-      const lines = fileContent.split('\n'); // 한 줄씩 읽기
-
+      const lines = fileContent.split('\n');
       for (const line of lines) {
-        const cleanedLine = line.replace(/\r/g, '').trim(); // CRLF 제거 및 공백 제거
-        if (!cleanedLine) continue; // 빈 줄 건너뛰기
-        
-        const [fileSerialNumber, exceptionUrl] = line.split(','); // 쉼표로 분리
+        const cleanedLine = line.replace(/\r/g, '').trim();
+        if (!cleanedLine) continue;
+        const [fileSerialNumber, exceptionUrl] = cleanedLine.split(',');
         if (fileSerialNumber.trim() === serialNumber.trim()) {
-          return exceptionUrl.trim(); // 예외 URL 반환
+          return { finalUrl: exceptionUrl.trim(), originalFileName };
         }
       }
     }
- 
-     return url.toString();
 
-    } catch (error) {
-      console.error("Invalid URL:", error);
-      return null;
-    }
+    url.pathname = pathParts.join('/');
+    return { finalUrl: url.toString(), originalFileName };
+
+  } catch (error) {
+    console.error("Invalid URL:", error);
+    return null;
   }
+}
+
+async function resolveAvailableTrailerUrlFromPlaylist(playlistUrl, originalFileName) {
+  const possibleKeys = ['hhb.m3u8', 'hmb.m3u8', 'mmb.m3u8'];
+
+  try {
+    const res = await fetch(playlistUrl);
+    if (res.ok) {
+      const content = await res.text();
+      const lines = content.split('\n').map(line => line.trim());
+
+      for (const key of possibleKeys) {
+        const foundLine = lines.find(line =>
+          line.endsWith('.m3u8') && line.includes(key)
+        );
+        if (foundLine) {
+          const url = new URL(playlistUrl);
+          const pathParts = url.pathname.split('/');
+          // 전체 파일명을 그대로 넣는다!
+          pathParts[pathParts.length - 1] = foundLine;
+          url.pathname = pathParts.join('/');
+          return url.toString();
+        }
+      }
+    } else {
+      console.warn(`playlist.m3u8 fetch failed: ${res.status}`);
+    }
+  } catch (err) {
+    console.error("Error reading playlist.m3u8:", err);
+  }
+
+  // fallback: 원본 이름에서 mhb_w 를 hhb로
+  const fallbackUrl = new URL(playlistUrl);
+  const fallbackParts = fallbackUrl.pathname.split('/');
+  const newFileName = originalFileName.replace('_mhb_w.mp4', '_hhb.m3u8');
+  fallbackParts[fallbackParts.length - 1] = newFileName;
+  fallbackUrl.pathname = fallbackParts.join('/');
+  return fallbackUrl.toString();
+}
+
+
   
 
 
@@ -314,8 +343,19 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
                             //OutputFile Path
                         const fileName = serialNumber +"_"+ Date.now()+ ".mp4";
                         const outputFilePath = path.join('uploads', fileName);
+                        transformSubtituteTrailerUrl(urlTrailer,serialNumber)
 
-                        await handleHLSDownload(transformSubtituteTrailerUrl(urlTrailer,serialNumber),outputFilePath);
+
+                        const { finalUrl, originalFileName } = transformSubtituteTrailerUrl(urlTrailer, serialNumber);
+
+                        let finalTrailerUrl;
+                        if (finalUrl.includes('playlist.m3u8')) {
+                            finalTrailerUrl = await resolveAvailableTrailerUrlFromPlaylist(finalUrl, originalFileName);
+                        } else {
+                            finalTrailerUrl = finalUrl; // 예외 케이스나 FALENO는 그대로 사용
+                        }
+
+                        await handleHLSDownload(finalTrailerUrl,outputFilePath);
 
                         trailerPath= outputFilePath;
                     }
