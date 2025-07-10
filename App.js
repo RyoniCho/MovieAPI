@@ -207,7 +207,7 @@ function transformSubtituteTrailerUrl(inputUrl, serialNumber) {
 }
 
 async function resolveAvailableTrailerUrlFromPlaylist(playlistUrl, originalFileName) {
-  const possibleKeys = ['hhb.m3u8', 'hmb.m3u8', 'mmb.m3u8'];
+  const possibleKeys = ['hhb', 'hmb', 'mmb', 'mhb', 'dmb', 'dm', 'sm'];
 
   try {
     const res = await fetch(playlistUrl);
@@ -222,8 +222,7 @@ async function resolveAvailableTrailerUrlFromPlaylist(playlistUrl, originalFileN
         if (foundLine) {
           const url = new URL(playlistUrl);
           const pathParts = url.pathname.split('/');
-          // 전체 파일명을 그대로 넣는다!
-          pathParts[pathParts.length - 1] = foundLine;
+          pathParts[pathParts.length - 1] = foundLine; // 라인 전체를 파일명으로
           url.pathname = pathParts.join('/');
           return url.toString();
         }
@@ -235,7 +234,7 @@ async function resolveAvailableTrailerUrlFromPlaylist(playlistUrl, originalFileN
     console.error("Error reading playlist.m3u8:", err);
   }
 
-  // fallback: 원본 이름에서 mhb_w 를 hhb로
+  // fallback: 원본에서 '_mhb_w.mp4' → '_hhb.m3u8'
   const fallbackUrl = new URL(playlistUrl);
   const fallbackParts = fallbackUrl.pathname.split('/');
   const newFileName = originalFileName.replace('_mhb_w.mp4', '_hhb.m3u8');
