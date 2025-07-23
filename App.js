@@ -58,6 +58,48 @@ app.use('/uploads', express.static('uploads'));// 업로드된 파일을 정적�
 //Login Auth
 app.use('/api/auth', authRoutes);
 
+// WatchHistory 모델 import
+const WatchHistory = require('./models/WatchHistory');
+// 유저별 영화 시청 위치 조회 API
+app.get('/api/watch-history', authMiddleware, async (req, res) => {
+    const userId = req.userId;
+    const { movieId } = req.query;
+    if (!movieId) {
+        return res.status(400).json({ error: 'movieId is required' });
+    }
+    try {
+        const history = await WatchHistory.findOne({ userId, movieId });
+        if (history) {
+            res.json({ lastWatchedTime: history.lastWatchedTime });
+        } else {
+            res.json({ lastWatchedTime: 0 }); // 기록 없으면 0초
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch watch history' });
+        console.log(err);
+    }
+});
+
+// 유저별 영화 시청 위치 저장/업데이트 API
+app.post('/api/watch-history', authMiddleware, async (req, res) => {
+    const userId = req.userId;
+    const { movieId, lastWatchedTime } = req.body;
+    if (!movieId || typeof lastWatchedTime !== 'number') {
+        return res.status(400).json({ error: 'movieId와 lastWatchedTime(Number)가 필요합니다.' });
+    }
+    try {
+        const updated = await WatchHistory.findOneAndUpdate(
+            { userId, movieId },
+            { lastWatchedTime, updatedAt: Date.now() },
+            { upsert: true, new: true }
+        );
+        res.json({ success: true, lastWatchedTime: updated.lastWatchedTime });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to save watch history' });
+        console.log(err);
+    }
+});
+
 //JWT 확인하는 미들웨어
 const authMiddleware = (req, res, next) => {
 
