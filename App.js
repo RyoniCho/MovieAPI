@@ -58,6 +58,27 @@ app.use('/uploads', express.static('uploads'));// 업로드된 파일을 정적�
 //Login Auth
 app.use('/api/auth', authRoutes);
 
+//JWT 확인하는 미들웨어
+const authMiddleware = (req, res, next) => {
+
+    const authorization = req.header('Authorization');
+    console.log("authMiddleware: "+authorization);
+
+    const token = authorization.replace('Bearer ', '');
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.userId = decoded.userId;
+        req.userRole = decoded.role; // role 저장
+        next();
+    } catch (err) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
 // WatchHistory 모델 import
 const WatchHistory = require('./models/WatchHistory');
 // 유저별 영화 시청 위치 조회 API
@@ -100,26 +121,7 @@ app.post('/api/watch-history', authMiddleware, async (req, res) => {
     }
 });
 
-//JWT 확인하는 미들웨어
-const authMiddleware = (req, res, next) => {
 
-    const authorization = req.header('Authorization');
-    console.log("authMiddleware: "+authorization);
-
-    const token = authorization.replace('Bearer ', '');
-    if (!token) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.userId = decoded.userId;
-        req.userRole = decoded.role; // role 저장
-        next();
-    } catch (err) {
-        res.status(401).json({ error: 'Invalid token' });
-    }
-};
 
 function requireAdmin(req, res, next) {
     if (req.userRole !== 'admin') {
