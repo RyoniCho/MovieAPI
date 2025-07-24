@@ -398,9 +398,14 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
                             finalTrailerUrl = finalUrl; // 예외 케이스나 FALENO는 그대로 사용
                         }
 
-                        await handleHLSDownload(finalTrailerUrl,outputFilePath);
-
-                        trailerPath= outputFilePath;
+                        if (finalTrailerUrl.endsWith('.mp4')) {
+                            // mp4면 바로 다운로드
+                            trailerPath = await downloadContents(serialNumber, finalTrailerUrl);
+                        } else {
+                            // m3u8이면 HLS 처리
+                            await handleHLSDownload(finalTrailerUrl, outputFilePath);
+                            trailerPath = outputFilePath;
+                        }
                     }
                     catch(err)
                     {
@@ -705,6 +710,38 @@ const updateMoviesWithExtraImages = async () => {
         console.error('Error updating movies:', err);
     }
 };
+
+// 관리자만 접근 가능
+app.post('/api/users', authMiddleware, requireAdmin, async (req, res) => {
+    const { username, password, role } = req.body;
+    if (!username || !password || !role) {
+        return res.status(400).json({ error: 'username, password, role 필요' });
+    }
+    try {
+        const user = new User({ username, password, role });
+        await user.save();
+        res.status(201).json({ success: true, user });
+    } catch (err) {
+        res.status(500).json({ error: '유저 생성 실패', details: err.message });
+    }
+});
+
+// 로그 저장 API
+app.post('/api/user-action-log', authMiddleware, async (req, res) => {
+    const { action, targetId, details } = req.body;
+    try {
+        const log = new UserActionLog({
+            userId: req.userId,
+            action,
+            targetId,
+            details
+        });
+        await log.save();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: '로그 저장 실패', details: err.message });
+    }
+});
 
 //updateMoviesWithExtraImages();
 
