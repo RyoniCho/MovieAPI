@@ -364,67 +364,56 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
         }
 
         let trailerPath;
-       
-        if(urlTrailer && urlTrailer!=='')
-        {
-            try{
-                trailerPath= await downloadContents(serialNumber,urlTrailer);
-            }
-            catch
-            {
-                try
-                {
-                    
-                    trailerPath= await downloadContents(serialNumber,urlTrailer.replace("_mhb_w","_dm_w"));
-                }
-                catch(err)
-                {
+        const defaultDummyTrailerPath = `uploads/SSNI-289_1723546895296.mp4`;
+        let trailerDownloadFailed = false;
 
-                    try
-                    {
-                        console.log("Try Download JAV trailer HLS")
-                            //OutputFile Path
-                        const fileName = serialNumber +"_"+ Date.now()+ ".mp4";
+        if (urlTrailer && urlTrailer !== '') {
+            try {
+                trailerPath = await downloadContents(serialNumber, urlTrailer);
+            } catch {
+                try {
+                    trailerPath = await downloadContents(serialNumber, urlTrailer.replace("_mhb_w", "_dm_w"));
+                } catch (err) {
+                    try {
+                        console.log("Try Download JAV trailer HLS");
+                        //OutputFile Path
+                        const fileName = serialNumber + "_" + Date.now() + ".mp4";
                         const outputFilePath = path.join('uploads', fileName);
-                        transformSubtituteTrailerUrl(urlTrailer,serialNumber)
-
+                        transformSubtituteTrailerUrl(urlTrailer, serialNumber);
 
                         const { finalUrl, originalFileName } = transformSubtituteTrailerUrl(urlTrailer, serialNumber);
 
                         let finalTrailerUrl;
-                        if (finalUrl.includes('playlist.m3u8')) {
+                        if (finalUrl && finalUrl.includes('playlist.m3u8')) {
                             finalTrailerUrl = await resolveAvailableTrailerUrlFromPlaylist(finalUrl, originalFileName);
                         } else {
                             finalTrailerUrl = finalUrl; // 예외 케이스나 FALENO는 그대로 사용
                         }
 
-                        if (finalTrailerUrl.endsWith('.mp4')) {
+                        if (finalTrailerUrl && finalTrailerUrl.endsWith('.mp4')) {
                             // mp4면 바로 다운로드
                             trailerPath = await downloadContents(serialNumber, finalTrailerUrl);
-                        } else {
+                        } else if (finalTrailerUrl) {
                             // m3u8이면 HLS 처리
                             await handleHLSDownload(finalTrailerUrl, outputFilePath);
                             trailerPath = outputFilePath;
+                        } else {
+                            trailerDownloadFailed = true;
                         }
+                    } catch (err) {
+                        console.log("Trailer download failed, using dummy trailer.");
+                        trailerDownloadFailed = true;
                     }
-                    catch(err)
-                    {
-                        res.status(500).json({ error: 'Failed to update movie' });
-                        console.log(err)
-                    }
-                    
                 }
-               
             }
-          
+        } else if (req.files.trailer && req.files.trailer.length > 0) {
+            trailerPath = req.files.trailer[0].path;
+        } else {
+            trailerDownloadFailed = true;
+        }
 
-        }
-        else if(req.files.trailer && req.files.trailer.length>0)
-        {
-            trailerPath=req.files.trailer[0].path;
-        }
-        else {
-            throw new Error('Trailer file or URL is required.');
+        if (trailerDownloadFailed || !trailerPath) {
+            trailerPath = defaultDummyTrailerPath;
         }
 
         let extraImagePaths =[];
