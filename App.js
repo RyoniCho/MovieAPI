@@ -711,6 +711,7 @@ app.post('/api/users', authMiddleware, requireAdmin, async (req, res) => {
         await user.save();
         res.status(201).json({ success: true, user });
     } catch (err) {
+        console.error('유저 생성 실패:', err);
         res.status(500).json({ error: '유저 생성 실패', details: err.message });
     }
 });
