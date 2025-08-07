@@ -10,6 +10,7 @@ const authRoutes = require('./Auth');
 const axios = require('axios');
 const fs_extra = require('fs-extra');
 const ffmpeg = require('fluent-ffmpeg');
+const User = require('./models/User');
 
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
