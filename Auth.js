@@ -6,6 +6,7 @@ const User = require('./models/User');
 require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const UserActionLog = require('./models/UserActionLog');
 
 const router = express.Router();
 
