@@ -24,12 +24,26 @@ router.post('/login', async (req, res) => {
             console.log("Invalid password");
             return res.status(401).json({ error: 'Invalid username or password' });
         }
+        
+        await UserActionLog.create({
+            userId: user._id,
+            action: 'login',
+            details: 'login successful',
+           
+        });
+
         const accessToken = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
         const refreshToken = jwt.sign({ userId: user._id, role: user.role }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
         // 클라이언트가 localStorage 등에 저장하도록 JSON으로 반환
         res.json({ accessToken, refreshToken });
     } catch (err) {
         res.status(500).json({ error: 'Login failed' });
+        
+        await UserActionLog.create({
+            userId: null, // 로그인 실패 시 userId는 null
+            action: 'login',
+            details: `login failed: ${username}`
+        });
     }
 });
 

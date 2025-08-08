@@ -11,7 +11,8 @@ const axios = require('axios');
 const fs_extra = require('fs-extra');
 const ffmpeg = require('fluent-ffmpeg');
 const User = require('./models/User');
-
+const UserActionLog = require('./models/UserActionLog');
+const WatchHistory = require('./models/WatchHistory');
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
 
@@ -80,8 +81,7 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
-// WatchHistory 모델 import
-const WatchHistory = require('./models/WatchHistory');
+
 // 유저별 영화 시청 위치 조회 API
 app.get('/api/watch-history', authMiddleware, async (req, res) => {
     const userId = req.userId;
@@ -597,13 +597,24 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
 });
 
 // 특정 ID의 영화 정보를 가져오는 API
-app.get('/api/movies/:id', async (req, res) => {
+app.get('/api/movies/:id',authMiddleware, async (req, res) => {
     try {
         const movie = await Movie.findById(req.params.id); // ID로 특정 영화 찾기
         if (!movie) {
             return res.status(404).json({ error: 'Movie not found' });
         }
         res.json(movie);
+
+        //userActionLog에 조회 기록 저장
+        const log = new UserActionLog({
+            userId: req.userId,
+            action: 'view',
+            targetId: movie._id,
+            details: `Viewed movie: ${movie.serialNumber}(${movie.actor}) ${movie.title}`,
+        });
+        await log.save();
+        console.log(`User ${req.userId} viewed movie: ${movie.title}`);
+
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch movie' });
         console.log(err)
@@ -731,6 +742,33 @@ app.post('/api/user-action-log', authMiddleware, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: '로그 저장 실패', details: err.message });
+    }
+});
+
+// 로그인/조회/재생 로그 전체 조회 (관리자만)
+app.get('/api/admin/user-action-logs', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const logs = await UserActionLog.find({})
+            .populate('userId', 'username')
+            .sort({ timestamp: -1 })
+            .limit(200); // 최근 200개만
+        res.json(logs);
+    } catch (err) {
+        res.status(500).json({ error: '로그 조회 실패', details: err.message });
+    }
+});
+
+// 영화별 재생 위치(WatchHistory) 전체 조회 (관리자만)
+app.get('/api/admin/watch-histories', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const histories = await WatchHistory.find({})
+            .populate('userId', 'username')
+            .populate('movieId', 'title serialNumber')
+            .sort({ updatedAt: -1 })
+            .limit(200);
+        res.json(histories);
+    } catch (err) {
+        res.status(500).json({ error: '시청 기록 조회 실패', details: err.message });
     }
 });
 
