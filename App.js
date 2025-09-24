@@ -350,7 +350,7 @@ app.get('/api/stream', (req, res) => {
   });
 
 // 라우팅 설정
-app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'image' }, { name: 'trailer' }]), async (req, res) => {
+app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'image' }, { name: 'trailer' },{name:'extraImage'}]), async (req, res) => {
     try{
         const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMoviePath,subscriptExist} = req.body;
 
@@ -430,6 +430,13 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
                 extraImagePaths.push(path);
             }
         }
+        else if (req.files.extraImage && req.files.extraImage.length > 0) {
+            for(let i=0;i<req.files.extraImage.length;i++)
+            {
+                extraImagePaths.push( req.files.extraImage[i].path);
+            }
+           
+        } 
         
         let mainMovieSubPath = '';
         console.log(`mainMoviePath:${mainMoviePath}`);
