@@ -68,7 +68,8 @@ const authMiddleware = (req, res, next) => {
     console.log("authMiddleware: "+authorization);
 
     if (!authorization) {
-        console.log('Authorization header missing');
+       console.log(`[AUTH ERROR] Missing Authorization header`);
+        console.log(`[API] ${req.method} ${req.originalUrl}`);
         console.trace('authMiddleware stack trace');
         return res.status(401).json({ error: 'Unauthorized' });
     }
