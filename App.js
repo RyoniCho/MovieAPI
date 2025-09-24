@@ -65,6 +65,10 @@ const authMiddleware = (req, res, next) => {
 
     const authorization = req.header('Authorization');
     console.log("authMiddleware: "+authorization);
+    
+    if (!authorization) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const token = authorization.replace('Bearer ', '');
     if (!token) {
