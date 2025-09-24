@@ -31,12 +31,13 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
   },
-  filename: (req, file, cb) => {
-
-    const ext = path.extname(file.originalname);
-    const fileName = req.body.serialNumber +"_"+ Date.now()+ ext; // serialNumber로 파일명 설정
-    cb(null, fileName);
-  },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        // 랜덤값 추가 (예: 6자리 hex)
+        const randomStr = Math.random().toString(16).slice(2, 8);
+        const fileName = req.body.serialNumber + "_" + Date.now() + "_" + randomStr + ext;
+        cb(null, fileName);
+    },
 });
 
 const upload = multer({ storage });
@@ -67,6 +68,8 @@ const authMiddleware = (req, res, next) => {
     console.log("authMiddleware: "+authorization);
 
     if (!authorization) {
+        console.log('Authorization header missing');
+        console.trace('authMiddleware stack trace');
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
