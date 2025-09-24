@@ -65,7 +65,7 @@ const authMiddleware = (req, res, next) => {
 
     const authorization = req.header('Authorization');
     console.log("authMiddleware: "+authorization);
-    
+
     if (!authorization) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -440,6 +440,9 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
                 extraImagePaths.push( req.files.extraImage[i].path);
             }
            
+        }
+        else{
+            console.log("No extra images provided.");
         } 
         
         let mainMovieSubPath = '';
