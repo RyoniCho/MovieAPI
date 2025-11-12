@@ -590,9 +590,7 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
             // mainMovie 필드가 존재하지 않거나 빈 값인 경우
             filter.$or = [
                 { mainMovie: { $exists: false } },
-                { mainMovie: {} },
                 { mainMovie: null },
-                { mainMovie: "" },
                 { $expr: { $eq: [ { $objectToArray: "$mainMovie" }, [] ] } }
                 ];
         }
