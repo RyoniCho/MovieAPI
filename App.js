@@ -317,51 +317,76 @@ app.get('/api/stream', (req, res) => {
     } 
 
     console.log("ffmpeg start");
-  
-    // HLS 파일을 실시간으로 생성
-    ffmpeg(videoPath)
-      .outputOptions([
-        '-vf', `scale=-1:${resolution === '720p' ? 720 : 1080}`,
-        '-c:v', 'libx264',
-        '-crf', '20',
-        '-preset', 'veryfast',
-        '-hls_time', '10', // 10초 간격으로 분할
-        '-hls_playlist_type', 'event',
-        '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
-        '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
-        
-      ])
-      .output(path.join(hlsPath, 'master.m3u8'))
-      .on('start', () => {
-        console.log('HLS 트랜스코딩 시작');
-      })
-      .on('end', () => {
-        console.log('HLS 트랜스코딩 완료');
-       
-        fs.unlinkSync(videoPath);
-        console.log(`${videoPath} : file removed`);
-    
-       
-      })
-      .on('stderr', (stderr) => {
-        console.log('stderr 로그:', stderr);
-      })
-      .on('error', (err) => {
-        console.error('HLS 트랜스코딩 오류:', err);
-        if (!res.headersSent) {
-          res.status(500).send('HLS 트랜스코딩 중 오류 발생');
-        }
-      })
-      .run();
 
-      res.sendFile(path.join(hlsPath, 'master.m3u8'));
+        let scaleValue = 1080;
+        if (resolution === '720p') scaleValue = 720;
+        else if (resolution === '4k' || resolution === '2160p') scaleValue = 2160;
+
+        // 하드웨어 인코더 감지: 퀵싱크 > 비디오툴박스 > libx264
+        // 1. 환경변수로 강제 지정 가능 (예: process.env.PREFERRED_ENCODER)
+        // 2. macOS면 h264_videotoolbox, 아니면 h264_qsv, 둘 다 안되면 libx264
+        let encoder = 'libx264';
+        const isMac = process.platform === 'darwin';
+        if (process.env.PREFERRED_ENCODER) {
+            encoder = process.env.PREFERRED_ENCODER;
+        } else {
+            // macOS: h264_videotoolbox 우선
+            if (isMac) {
+                encoder = 'h264_videotoolbox';
+            } else {
+                // Intel Quick Sync (h264_qsv) 우선, 실제 지원 여부는 ffmpeg 빌드에 따라 다름
+                encoder = 'h264_qsv';
+            }
+        }
+
+        // HLS 파일을 실시간으로 생성
+        ffmpeg(videoPath)
+            .outputOptions([
+                '-vf', `scale=-1:${scaleValue}`,
+                '-c:v', encoder,
+                '-crf', '20',
+                '-preset', 'veryfast',
+                '-hls_time', '10',
+                '-hls_playlist_type', 'event',
+                '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
+                '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
+            ])
+            .output(path.join(hlsPath, 'master.m3u8'))
+            .on('start', () => {
+                console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
+            })
+            .on('end', () => {
+                console.log('HLS 트랜스코딩 완료');
+                fs.unlinkSync(videoPath);
+                console.log(`${videoPath} : file removed`);
+            })
+            .on('stderr', (stderr) => {
+                console.log('stderr 로그:', stderr);
+            })
+            .on('error', (err) => {
+                console.error('HLS 트랜스코딩 오류:', err);
+                if (!res.headersSent) {
+                    res.status(500).send('HLS 트랜스코딩 중 오류 발생');
+                }
+            })
+            .run();
+
+        res.sendFile(path.join(hlsPath, 'master.m3u8'));
   });
 
 // 라우팅 설정
 app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'image' }, { name: 'trailer' },{name:'extraImage'}]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMoviePath,subscriptExist} = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMovie,subscriptExist} = req.body;
 
+        let mainMovieObj ={};
+        try{
+            mainMovieObj= JSON.parse(mainMovie);
+        }
+        catch(err)
+        {
+            mainMovieObj={};
+        }
         
         let imagePath;
         if (urlImage && urlImage !== '') {
@@ -450,23 +475,20 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
         } 
         
         let mainMovieSubPath = '';
-        console.log(`mainMoviePath:${mainMoviePath}`);
-        if(mainMoviePath!=='')
+       
+        const checkOrder = ['1080p', '720p', '4k', '2160p'];
+        for (const q of checkOrder) 
         {
-           
-            mainMovieSubPath = mainMoviePath.replace(".mp4",".vtt");
-            if(!fs.existsSync(path.join(__dirname, mainMovieSubPath)))
+            if (mainMovieObj[q]) 
             {
-                mainMovieSubPath='';
-                console.log(`not exist: ${path.join(__dirname, mainMovieSubPath)}`);
-            }
-            else{
-                console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
+                const vttPath = mainMovieObj[q].replace('.mp4', '.vtt');
+                if (fs.existsSync(path.join(__dirname, vttPath))) {
+                mainMovieSubPath = vttPath;
+                break;
+                }
             }
         }
-
         
-       
        
     
         const movie = new Movie(
@@ -481,7 +503,7 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
             releaseDate,
             category,
             extraImage:extraImagePaths,
-            mainMovie : mainMoviePath,
+            mainMovie : mainMovieObj,
             mainMovieSub: mainMovieSubPath,
             subscriptExist
             
@@ -566,7 +588,13 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
         {
             filter.plexRegistered = false;
             // mainMovie 필드가 존재하지 않거나 빈 값인 경우
-            filter.mainMovie = { $in: [null, ""] };
+            filter.$or = [
+                { mainMovie: { $exists: false } },
+                { mainMovie: {} },
+                { mainMovie: null },
+                { mainMovie: "" },
+                { $expr: { $eq: [ { $objectToArray: "$mainMovie" }, [] ] } }
+                ];
         }
         else
         {
@@ -577,8 +605,9 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
             }
 
             if (owned === "web") {
-                // mainMovie 필드가 존재하고 빈 값이 아닌 경우
-                filter.mainMovie = { $exists: true, $ne: "" };
+                filter.$and = filter.$and || [];
+                filter.$and.push({ mainMovie: { $exists: true } });
+                filter.$and.push({ $expr: { $gt: [ { $size: { $objectToArray: "$mainMovie" } }, 0 ] } });
             } 
         }
 
@@ -671,25 +700,34 @@ app.put('/api/movies/:id',authMiddleware,requireAdmin, async (req, res) => {
         const movieId = req.params.id;
         const updatedData = req.body;
 
-        //자막정보 반영
-        let mainMovieSubPath = '';
-       
-        if(updatedData.mainMovie!=='')
+        let mainMovieObj ={};
+        try{
+            mainMovieObj= JSON.parse(updatedData.mainMovie);
+        }
+        catch(err)
         {
-           
-            mainMovieSubPath = updatedData.mainMovie.replace(".mp4",".vtt");
-            if(!fs.existsSync(path.join(__dirname, mainMovieSubPath)))
-            {
-                mainMovieSubPath='';
-                console.log(`not exist: ${path.join(__dirname, mainMovieSubPath)}`);
-            }
-            else{
-                console.log(`subscript added : ${path.join(__dirname, mainMovieSubPath)}`)
-                updatedData.mainMovieSub = mainMovieSubPath;
-            }
+            mainMovieObj={};
         }
 
-        
+        //자막정보 반영
+        let mainMovieSubPath = '';
+        const checkOrder = ['1080p', '720p', '4k', '2160p'];
+        for (const q of checkOrder) {
+            if (mainMovieObj[q]) 
+            {
+                const vttPath = mainMovieObj[q].replace('.mp4', '.vtt');
+                if (fs.existsSync(path.join(__dirname, vttPath))) 
+                {
+                    mainMovieSubPath = vttPath;
+                    updatedData.mainMovieSub = mainMovieSubPath;
+                    break;
+                }
+                else{
+                    console.log(`not exist: ${path.join(__dirname, vttPath)}`);
+                }
+            }
+        }
+       
 
         // 영화 정보 업데이트
         const updatedMovie = await Movie.findByIdAndUpdate(movieId, updatedData, { new: true });
