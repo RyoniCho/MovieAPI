@@ -583,32 +583,48 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
         filter.actor = actor;
     }
     if (owned) {
-       
-        if(owned==="false")
-        {
+        if (owned === "false") {
             filter.plexRegistered = false;
             // mainMovie 필드가 존재하지 않거나 빈 값인 경우
             filter.$or = [
                 { mainMovie: { $exists: false } },
                 { mainMovie: null },
                 { $expr: { $eq: [ { $objectToArray: "$mainMovie" }, [] ] } }
-                ];
-        }
-        else
-        {
-          
+            ];
+        } else {
             if (owned === "plex") {
-               
                 filter.plexRegistered = true;
             }
-
             if (owned === "web") {
                 filter.$and = filter.$and || [];
                 filter.$and.push({ mainMovie: { $exists: true } });
                 filter.$and.push({ $expr: { $gt: [ { $size: { $objectToArray: "$mainMovie" } }, 0 ] } });
-            } 
+            }
+            if (owned === "web4k") {
+                filter.$and = filter.$and || [];
+                filter.$and.push({ mainMovie: { $exists: true } });
+                // 4k 또는 2160p 키가 mainMovie에 존재하는 경우
+                filter.$and.push({ $expr: { $gt: [ { $size: {
+                    $filter: {
+                        input: { $objectToArray: "$mainMovie" },
+                        as: "mm",
+                        cond: { $in: [ { $toLower: "$$mm.k" }, ["4k", "2160p"] ] }
+                    }
+                } }, 0 ] } });
+            }
+            if (owned === "web1080p") {
+                filter.$and = filter.$and || [];
+                filter.$and.push({ mainMovie: { $exists: true } });
+                // 1080p 키가 mainMovie에 존재하는 경우
+                filter.$and.push({ $expr: { $gt: [ { $size: {
+                    $filter: {
+                        input: { $objectToArray: "$mainMovie" },
+                        as: "mm",
+                        cond: { $eq: [ { $toLower: "$$mm.k" }, "1080p" ] }
+                    }
+                } }, 0 ] } });
+            }
         }
-
     }
    
     if (subscriptExist) {
