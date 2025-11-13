@@ -673,12 +673,14 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
 
     try {
         const sort = sortOrder === 'asc' ? { releaseDate: 1 } : { releaseDate: -1 };
+        // 전체 개수 (필터 적용)
+        const totalCount = await Movie.countDocuments(filter);
+        // 페이징된 데이터
         const movies = await Movie.find(filter)
-                                .sort(sort)
-                                .skip((page - 1) * pageSize)
-                                .limit(parseInt(pageSize));
-                             
-        res.json(movies);
+            .sort(sort)
+            .skip((page - 1) * pageSize)
+            .limit(parseInt(pageSize));
+        res.json({ movies, totalCount });
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch movies' });
         console.log(err);
