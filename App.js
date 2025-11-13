@@ -746,7 +746,7 @@ app.put('/api/movies/:id',authMiddleware,requireAdmin, async (req, res) => {
 
         let mainMovieObj ={};
         try{
-            mainMovieObj= JSON.parse(updatedData.mainMovie);
+            mainMovieObj= updatedData.mainMovie;
         }
         catch(err)
         {
