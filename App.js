@@ -603,26 +603,54 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
             if (owned === "web4k") {
                 filter.$and = filter.$and || [];
                 filter.$and.push({ mainMovie: { $exists: true } });
-                // 4k 또는 2160p 키가 mainMovie에 존재하는 경우
-                filter.$and.push({ $expr: { $gt: [ { $size: {
-                    $filter: {
-                        input: { $objectToArray: "$mainMovie" },
-                        as: "mm",
-                        cond: { $in: [ { $toLower: "$$mm.k" }, ["4k", "2160p"] ] }
+                // 4k 또는 2160p 키가 mainMovie에 존재하고, 값이 빈 문자열이 아닌 경우만
+                filter.$and.push({
+                    $expr: {
+                        $gt: [
+                            {
+                                $size: {
+                                    $filter: {
+                                        input: { $objectToArray: "$mainMovie" },
+                                        as: "mm",
+                                        cond: {
+                                            $and: [
+                                                { $in: [ { $toLower: "$$mm.k" }, ["4k", "2160p"] ] },
+                                                { $ne: [ { $ifNull: ["$$mm.v", ""] }, "" ] }
+                                            ]
+                                        }
+                                    }
+                                }
+                            },
+                            0
+                        ]
                     }
-                } }, 0 ] } });
+                });
             }
             if (owned === "web1080p") {
                 filter.$and = filter.$and || [];
                 filter.$and.push({ mainMovie: { $exists: true } });
-                // 1080p 키가 mainMovie에 존재하는 경우
-                filter.$and.push({ $expr: { $gt: [ { $size: {
-                    $filter: {
-                        input: { $objectToArray: "$mainMovie" },
-                        as: "mm",
-                        cond: { $eq: [ { $toLower: "$$mm.k" }, "1080p" ] }
+                // 1080p 키가 mainMovie에 존재하고, 값이 빈 문자열이 아닌 경우만
+                filter.$and.push({
+                    $expr: {
+                        $gt: [
+                            {
+                                $size: {
+                                    $filter: {
+                                        input: { $objectToArray: "$mainMovie" },
+                                        as: "mm",
+                                        cond: {
+                                            $and: [
+                                                { $eq: [ { $toLower: "$$mm.k" }, "1080p" ] },
+                                                { $ne: [ { $ifNull: ["$$mm.v", ""] }, "" ] }
+                                            ]
+                                        }
+                                    }
+                                }
+                            },
+                            0
+                        ]
                     }
-                } }, 0 ] } });
+                });
             }
         }
     }
@@ -667,7 +695,7 @@ app.get('/api/movies/:id',authMiddleware, async (req, res) => {
         res.json(movie);
 
         //userActionLog에 조회 기록 저장
-        const log = new UserActionLog({
+        const log = new UserActionLog({ 
             userId: req.userId,
             action: 'view',
             targetId: movie._id,
