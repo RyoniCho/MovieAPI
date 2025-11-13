@@ -131,3 +131,4 @@ dist
 
 /hls
 /uploads
+*.code-workspace
