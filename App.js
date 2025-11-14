@@ -139,15 +139,18 @@ function requireAdmin(req, res, next) {
     next();
   }
 
-const downloadContents = async (serialNumber,url)=>{
-    console.log("downloadcontents:"+url);
+const downloadContents = async (serialNumber, url) => {
+    console.log("downloadcontents:" + url);
+    // 이미 서버 파일이면 그대로 반환
+    if (typeof url === 'string' && (url.startsWith('uploads/') || url.startsWith('uploads\\'))) {
+        return url.replace(/\\/g, '/'); // 윈도우 경로도 /로 통일
+    }
     const response = await axios.get(url.trim(), { responseType: 'arraybuffer' });
     const buffer = Buffer.from(response.data, 'binary');
-    const fileName = serialNumber +"_"+ Date.now()+ path.extname(url);
+    const fileName = serialNumber + "_" + Date.now() + path.extname(url);
     const filePath = path.join('uploads', fileName);
     await fs_extra.outputFile(filePath, buffer);
-
-    return filePath;
+    return filePath.replace(/\\/g, '/');
 }
 function updateM3U8Paths(m3u8FilePath, baseUrl) {
     try {
