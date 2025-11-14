@@ -739,51 +739,83 @@ app.post('/api/actors', authMiddleware,requireAdmin,async (req, res) => {
 });
 
 // 영화정보 업데이트
-app.put('/api/movies/:id',authMiddleware,requireAdmin, async (req, res) => {
+const putUpload = upload.fields([
+    { name: 'image' },
+    { name: 'trailer' },
+    { name: 'extraImage' }
+]);
+app.put('/api/movies/:id', authMiddleware, requireAdmin, putUpload, async (req, res) => {
     try {
         const movieId = req.params.id;
-        const updatedData = req.body;
-
-        let mainMovieObj ={};
-        try{
-            mainMovieObj= updatedData.mainMovie;
-        }
-        catch(err)
-        {
-            mainMovieObj={};
+        const body = req.body;
+        let mainMovieObj = {};
+        try {
+            mainMovieObj = typeof body.mainMovie === 'string' ? JSON.parse(body.mainMovie) : body.mainMovie;
+        } catch {
+            mainMovieObj = {};
         }
 
-        //자막정보 반영
+        // 대표 이미지 처리
+        let imagePath;
+        if (body.urlImage && body.urlImage !== '') {
+            imagePath = await downloadContents(body.serialNumber, body.urlImage);
+        } else if (req.files.image && req.files.image.length > 0) {
+            imagePath = req.files.image[0].path;
+        }
+
+        // 추가 이미지 처리
+        let extraImagePaths = [];
+        if (body.urlsExtraImage && body.urlsExtraImage.length > 0) {
+            const listUrlExtraImg = body.urlsExtraImage.split(',');
+            for (let i = 0; i < listUrlExtraImg.length; i++) {
+                let path = await downloadContents(body.serialNumber, listUrlExtraImg[i]);
+                extraImagePaths.push(path);
+            }
+        }
+        if (req.files.extraImage && req.files.extraImage.length > 0) {
+            for (let i = 0; i < req.files.extraImage.length; i++) {
+                extraImagePaths.push(req.files.extraImage[i].path);
+            }
+        }
+
+        // 자막정보 반영
         let mainMovieSubPath = '';
         const checkOrder = ['1080p', '720p', '4k', '2160p'];
         for (const q of checkOrder) {
-            if (mainMovieObj[q]) 
-            {
+            if (mainMovieObj[q]) {
                 const vttPath = mainMovieObj[q].replace('.mp4', '.vtt');
-                if (fs.existsSync(path.join(__dirname, vttPath))) 
-                {
+                if (fs.existsSync(path.join(__dirname, vttPath))) {
                     mainMovieSubPath = vttPath;
-                    updatedData.mainMovieSub = mainMovieSubPath;
                     break;
-                }
-                else{
-                    console.log(`not exist: ${path.join(__dirname, vttPath)}`);
                 }
             }
         }
-       
 
-        // 영화 정보 업데이트
-        const updatedMovie = await Movie.findByIdAndUpdate(movieId, updatedData, { new: true });
+        // 업데이트 데이터 구성
+        const updateFields = {
+            title: body.title,
+            description: body.description,
+            actor: body.actor,
+            serialNumber: body.serialNumber,
+            subscriptExist: body.subscriptExist === 'true' || body.subscriptExist === true,
+            plexRegistered: body.plexRegistered === 'true' || body.plexRegistered === true,
+            releaseDate: body.releaseDate,
+            category: body.category,
+            mainMovie: mainMovieObj,
+            mainMovieSub: mainMovieSubPath,
+            trailer: body.trailer,
+        };
+        if (imagePath) updateFields.image = imagePath;
+        if (extraImagePaths.length > 0) updateFields.extraImage = extraImagePaths;
 
+        const updatedMovie = await Movie.findByIdAndUpdate(movieId, updateFields, { new: true });
         if (!updatedMovie) {
             return res.status(404).json({ message: 'Movie not found' });
         }
-
         res.json(updatedMovie);
     } catch (err) {
         res.status(500).json({ error: 'Failed to update movie' });
-        console.log(err)
+        console.log(err);
     }
 });
 
