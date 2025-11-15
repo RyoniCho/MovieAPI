@@ -588,11 +588,28 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
     if (owned) {
         if (owned === "false") {
             filter.plexRegistered = false;
-            // mainMovie 필드가 존재하지 않거나 빈 값인 경우
+            // mainMovie 필드가 존재하지 않거나, 모든 값이 빈 문자열/false/null인 경우
             filter.$or = [
                 { mainMovie: { $exists: false } },
                 { mainMovie: null },
-                { $expr: { $eq: [ { $objectToArray: "$mainMovie" }, [] ] } }
+                { $expr: {
+                    $eq: [
+                        {
+                            $size: {
+                                $filter: {
+                                    input: { $objectToArray: "$mainMovie" },
+                                    as: "mm",
+                                    cond: { $or: [
+                                        { $eq: [ { $ifNull: ["$$mm.v", null] }, null ] },
+                                        { $eq: [ { $ifNull: ["$$mm.v", ""] }, "" ] },
+                                        { $eq: [ { $ifNull: ["$$mm.v", false] }, false ] }
+                                    ] }
+                                }
+                            }
+                        },
+                        { $size: { $objectToArray: "$mainMovie" } }
+                    ]
+                } }
             ];
         } else {
             if (owned === "plex") {
