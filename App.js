@@ -692,7 +692,14 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
     
 
     try {
-        const sort = sortOrder === 'asc' ? { releaseDate: 1 } : { releaseDate: -1 };
+        let sort = { releaseDate: -1 };
+        if (sortOrder === 'asc') {
+            sort = { releaseDate: 1 };
+        } else if (sortOrder === 'createdAsc') {
+            sort = { _id: 1 };
+        } else if (sortOrder === 'createdDesc') {
+            sort = { _id: -1 };
+        }
         // 전체 개수 (필터 적용)
         const totalCount = await Movie.countDocuments(filter);
         // 페이징된 데이터
