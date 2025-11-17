@@ -1,3 +1,5 @@
+
+
 const express = require('express');
 const mongoose = require('mongoose');
 const multer = require('multer');
@@ -928,6 +930,30 @@ app.get('/api/admin/watch-histories', authMiddleware, requireAdmin, async (req, 
         res.json(histories);
     } catch (err) {
         res.status(500).json({ error: '시청 기록 조회 실패', details: err.message });
+    }
+});
+
+// 내 최근 시청 기록 조회 (로그인 유저)
+app.get('/api/users/me/watch-histories', authMiddleware, async (req, res) => {
+    try {
+        const histories = await WatchHistory.find({ userId: req.userId })
+            .populate('movieId', 'title serialNumber image')
+            .sort({ updatedAt: -1 })
+            .limit(50);
+        res.json(histories);
+    } catch (err) {
+        res.status(500).json({ error: '내 시청 기록 조회 실패', details: err.message });
+    }
+});
+
+// 내 시청 기록 개별 삭제 (로그인 유저)
+app.delete('/api/users/me/watch-histories/:id', authMiddleware, async (req, res) => {
+    try {
+        const history = await WatchHistory.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+        if (!history) return res.status(404).json({ error: '기록을 찾을 수 없습니다.' });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: '시청 기록 삭제 실패', details: err.message });
     }
 });
 
