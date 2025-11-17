@@ -745,7 +745,11 @@ app.get('/api/movies/:id',authMiddleware, async (req, res) => {
 app.get('/api/actors', async (req, res) => {
     try {
         const actors = await Actor.find();
-        res.json(actors);
+        // 한글/영어 분리
+        const isKorean = (name) => /[\u3131-\u318E\uAC00-\uD7A3]/.test(name);
+        const koreanActors = actors.filter(a => isKorean(a.name)).sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'));
+        const englishActors = actors.filter(a => !isKorean(a.name)).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+        res.json([...koreanActors, ...englishActors]);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch actors' });
         console.log(err)
