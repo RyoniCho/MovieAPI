@@ -941,7 +941,7 @@ app.get('/api/admin/watch-histories', authMiddleware, requireAdmin, async (req, 
 app.get('/api/users/me/watch-histories', authMiddleware, async (req, res) => {
     try {
         const histories = await WatchHistory.find({ userId: req.userId })
-            .populate('movieId', 'title serialNumber image')
+            .populate('movieId')
             .sort({ updatedAt: -1 })
             .limit(50);
         res.json(histories);
