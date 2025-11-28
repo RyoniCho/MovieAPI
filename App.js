@@ -64,18 +64,21 @@ app.use('/api/auth', authRoutes);
 //JWT 확인하는 미들웨어
 const authMiddleware = (req, res, next) => {
 
-    const authorization = req.header('Authorization');
-    console.log("authMiddleware: "+authorization);
-
-    if (!authorization) {
-       console.log(`[AUTH ERROR] Missing Authorization header`);
-        console.log(`[API] ${req.method} ${req.originalUrl}`);
-        console.trace('authMiddleware stack trace');
-        return res.status(401).json({ error: 'Unauthorized' });
+    let token = req.header('Authorization');
+    
+    // 헤더에 없으면 쿼리 파라미터 확인 (다운로드 링크 등에서 사용)
+    if (!token && req.query.token) {
+        token = req.query.token;
+    } else if (token) {
+        token = token.replace('Bearer ', '');
     }
 
-    const token = authorization.replace('Bearer ', '');
+    // console.log("authMiddleware: " + (token ? "Token exists" : "No token"));
+
     if (!token) {
+       console.log(`[AUTH ERROR] Missing Authorization header or token query`);
+        console.log(`[API] ${req.method} ${req.originalUrl}`);
+        // console.trace('authMiddleware stack trace');
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
