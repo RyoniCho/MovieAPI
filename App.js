@@ -409,6 +409,9 @@ app.get('/api/download', authMiddleware, (req, res) => {
         const regex = new RegExp(prefixToRemove.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
         m3u8Content = m3u8Content.replace(regex, '');
         
+        // EVENT 타입을 VOD로 변경 (다운로드 최적화: ffmpeg가 스트림 끝을 명확히 인지하도록 함)
+        m3u8Content = m3u8Content.replace('#EXT-X-PLAYLIST-TYPE:EVENT', '#EXT-X-PLAYLIST-TYPE:VOD');
+        
         fs.writeFileSync(tempM3u8Path, m3u8Content, 'utf8');
     } catch (err) {
         console.error('Error creating temp m3u8:', err);
@@ -427,7 +430,9 @@ app.get('/api/download', authMiddleware, (req, res) => {
     ffmpeg(tempM3u8Path)
         .inputOptions([
             '-allowed_extensions', 'ALL',
-            '-protocol_whitelist', 'file,http,https,tcp,tls'
+            '-protocol_whitelist', 'file,http,https,tcp,tls',
+            '-analyzeduration', '20000000', // 20초 (분석 시간 제한)
+            '-probesize', '20000000'        // 20MB (분석 데이터 크기 제한)
         ])
         .outputOptions([
             '-c', 'copy',              // 비디오/오디오 코덱 복사 (매우 빠름)
@@ -443,13 +448,29 @@ app.get('/api/download', authMiddleware, (req, res) => {
             } else {
                 res.end(); 
             }
-            // 에러 발생 시에도 임시 파일 삭제 시도
-            if (fs.existsSync(tempM3u8Path)) fs.unlinkSync(tempM3u8Path);
+            // 에러 발생 시에도 임시 파일 삭제 시도 (EBUSY 방지를 위해 약간의 지연 후 삭제)
+            setTimeout(() => {
+                if (fs.existsSync(tempM3u8Path)) {
+                    try {
+                        fs.unlinkSync(tempM3u8Path);
+                    } catch (e) {
+                        console.error('Failed to delete temp m3u8 on error:', e.message);
+                    }
+                }
+            }, 1000);
         })
         .on('end', () => {
             console.log(`Download completed: ${downloadFilename}`);
-            // 완료 후 임시 파일 삭제
-            if (fs.existsSync(tempM3u8Path)) fs.unlinkSync(tempM3u8Path);
+            // 완료 후 임시 파일 삭제 (EBUSY 방지를 위해 약간의 지연 후 삭제)
+            setTimeout(() => {
+                if (fs.existsSync(tempM3u8Path)) {
+                    try {
+                        fs.unlinkSync(tempM3u8Path);
+                    } catch (e) {
+                        console.error('Failed to delete temp m3u8 on end:', e.message);
+                    }
+                }
+            }, 1000);
         })
         .pipe(res, { end: true });
 });
