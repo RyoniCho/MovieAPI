@@ -10,13 +10,13 @@ const authRoutes = require('./Auth');
 const axios = require('axios');
 const fs_extra = require('fs-extra');
 const ffmpeg = require('fluent-ffmpeg');
+const { exec, execSync } = require('child_process');
 const User = require('./models/User');
 const UserActionLog = require('./models/UserActionLog');
 const WatchHistory = require('./models/WatchHistory');
 const Favorite = require('./models/Favorite');
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
-const { exec, spawn } = require('child_process');
 
 
 const app = express();
@@ -47,7 +47,7 @@ const upload = multer({ storage });
 
 app.use(cors(
     {
-    origin: [CORS_ORIGIN,"http://localhost:3000", "http://192.168.0.109:3000"],
+    origin: [CORS_ORIGIN,"http://localhost:3000"],
     credentials: true,
 }
 )); // CORS 미들웨어 추가
@@ -375,7 +375,7 @@ app.get('/api/stream', (req, res) => {
             if (isMac) {
                 encoder = 'h264_videotoolbox';
             } else {
-                // Intel Quick Sync (h264_qsv) 우선
+                // Intel Quick Sync (h264_qsv) 우선, 실제 지원 여부는 ffmpeg 빌드에 따라 다름
                 encoder = 'h264_qsv';
             }
         }
@@ -383,41 +383,64 @@ app.get('/api/stream', (req, res) => {
         // HLS 파일을 실시간으로 생성
         const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
         const hasSubtitle = fs.existsSync(vttPath);
-
-        const command = ffmpeg(videoPath);
-        const outputOptions = [
-            '-vf', `scale=-1:${scaleValue}`,
-            '-c:v', encoder,
-            '-crf', '20',
-            '-preset', 'veryfast',
-            '-hls_time', '10',
-            '-hls_playlist_type', 'event',
-            '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
-        ];
+        
+        const command = ffmpeg(videoPath)
+            .outputOptions([
+                '-vf', `scale=-1:${scaleValue}`,
+                '-c:v', encoder,
+                '-crf', '20',
+                '-preset', 'veryfast',
+                '-hls_time', '10',
+                '-hls_playlist_type', 'event',
+                '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
+                '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
+            ]);
 
         if (hasSubtitle) {
-            command.input(vttPath);
-            outputOptions.push('-map', '0:v');
-            outputOptions.push('-map', '0:a?');
-            outputOptions.push('-map', '1:s');
-            outputOptions.push('-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs');
-            // 확장자를 제거하여 ffmpeg가 비디오는 .ts, 자막은 .vtt로 자동 설정하도록 함
-            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'));
-            outputOptions.push('-master_pl_name', 'master.m3u8');
+             // 1. 자막 세그먼트 생성 (동기 실행)
+             const subsM3u8Path = path.join(hlsPath, 'subs.m3u8');
+             const subSegmentPattern = path.join(hlsPath, 'sub_%03d.vtt');
+             
+             // Windows 경로 호환성 처리
+             const cleanVttPath = vttPath.replace(/\\/g, '/');
+             const cleanSubsM3u8Path = subsM3u8Path.replace(/\\/g, '/');
+             const cleanSubSegmentPattern = subSegmentPattern.replace(/\\/g, '/');
+
+             const ffmpegSubCmd = `ffmpeg -y -i "${cleanVttPath}" -c:s webvtt -f segment -segment_time 10 -segment_list "${cleanSubsM3u8Path}" -segment_list_type hls -segment_format webvtt "${cleanSubSegmentPattern}"`;
+             
+             try {
+                 console.log('Generating subtitle segments...');
+                 execSync(ffmpegSubCmd);
+                 console.log('Subtitle segments generated.');
+             } catch (e) {
+                 console.error("Subtitle generation failed", e);
+             }
+
+             // 2. Master Playlist 수동 생성 (자막 포함)
+             const masterContent = `#EXTM3U
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="subs.m3u8",LANGUAGE="ko"
+#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
+video.m3u8`;
+             fs.writeFileSync(path.join(hlsPath, 'master.m3u8'), masterContent);
+
+             // 3. 메인 FFmpeg는 video.m3u8로 출력
+             command.output(path.join(hlsPath, 'video.m3u8'));
+             
+             // 4. 시작 이벤트에서 모니터링 시작
+             command.on('start', () => {
+                console.log('HLS 트랜스코딩 시작 (Video Only mode for Subtitle support)');
+                monitorAndFixSubtitles(hlsPath);
+             });
+
         } else {
-            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'));
+            // 자막 없음: 기존 방식대로 master.m3u8 출력
+            command.output(path.join(hlsPath, 'master.m3u8'))
+                   .on('start', () => {
+                        console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
+                   });
         }
 
         command
-            .outputOptions(outputOptions)
-            .output(path.join(hlsPath, hasSubtitle ? 'playlist_%v.m3u8' : 'master.m3u8')) 
-            .on('start', () => {
-                console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
-                if (hasSubtitle) {
-                    console.log('자막 포함 트랜스코딩');
-                    monitorAndFixSubtitles(hlsPath, command);
-                }
-            })
             .on('end', () => {
                 console.log('HLS 트랜스코딩 완료');
                 fs.unlinkSync(videoPath);
@@ -434,13 +457,6 @@ app.get('/api/stream', (req, res) => {
             })
             .run();
 
-        // hasSubtitle일 경우 master.m3u8이 생성되기를 기다려야 할 수도 있지만,
-        // ffmpeg가 파일을 생성하는 시점과 res.sendFile 시점의 차이 주의.
-        // 기존 로직도 비동기 run() 후 바로 sendFile을 호출함.
-        // ffmpeg가 초기 파일을 생성할 때까지 약간의 지연이 있을 수 있음.
-        // 하지만 기존 코드가 작동했다면, 여기서도 비슷하게 작동할 것임.
-        // 단, hasSubtitle일 경우 master.m3u8은 -master_pl_name 옵션으로 생성됨.
-        
         res.sendFile(path.join(hlsPath, 'master.m3u8'));
   });
 
@@ -1226,87 +1242,63 @@ app.get('/api/favorites/ids', authMiddleware, async (req, res) => {
     }
 });
 
-//updateMoviesWithExtraImages();
+// AirPlay 자막 싱크 보정 함수
+function monitorAndFixSubtitles(hlsPath) {
+    const segment0Path = path.join(hlsPath, 'segment_000.ts');
+    let attempts = 0;
+    const maxAttempts = 60; // 10초 * 60 = 600초 (10분) 대기
 
-// AirPlay 자막 싱크 보정 모니터링 함수
-function monitorAndFixSubtitles(hlsPath, ffmpegProcess) {
-    let isFinished = false;
-    
-    // ffmpegProcess 종료 이벤트 감지 (fluent-ffmpeg: end/error, spawn: exit/error)
-    const onFinish = () => { isFinished = true; };
-    ffmpegProcess.on('end', onFinish);
-    ffmpegProcess.on('exit', onFinish);
-    ffmpegProcess.on('error', onFinish);
-
-    let ptsFound = false;
-    let startPts = 0;
-    const processedFiles = new Set();
-
-    const intervalId = setInterval(() => {
-        if (isFinished) {
-            clearInterval(intervalId);
-            // 마지막으로 한 번 더 실행
-            fixVttFiles(hlsPath, startPts, processedFiles);
+    const checkInterval = setInterval(() => {
+        attempts++;
+        if (attempts > maxAttempts) {
+            console.log('[AirPlay Sync] Timeout waiting for segment_000.ts');
+            clearInterval(checkInterval);
             return;
         }
 
-        if (!ptsFound) {
-            fs.readdir(hlsPath, (err, files) => {
-                if (err) return;
-                // 비디오 세그먼트 찾기 (vtt, m3u8 제외하고 segment로 시작하는 파일)
-                const videoSegment = files.find(f => f.startsWith('segment') && !f.endsWith('.vtt') && !f.endsWith('.m3u8'));
-                
-                if (videoSegment) {
-                    const segPath = path.join(hlsPath, videoSegment);
-                    // ffprobe로 시작 시간 측정
-                    exec(`ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${segPath}"`, (error, stdout) => {
-                        if (!error && stdout) {
-                            const startTime = parseFloat(stdout.trim());
-                            if (!isNaN(startTime)) {
-                                startPts = Math.floor(startTime * 90000);
-                                ptsFound = true;
-                                console.log(`[AirPlay Sync] Detected start PTS: ${startPts} from ${videoSegment}`);
-                            }
-                        }
-                    });
-                }
-            });
-        } else {
-            // PTS를 찾았으면 VTT 파일 수정
-            fixVttFiles(hlsPath, startPts, processedFiles);
-        }
-    }, 2000); // 2초마다 확인
-}
-
-function fixVttFiles(hlsPath, startPts, processedFiles) {
-    fs.readdir(hlsPath, (err, files) => {
-        if (err) return;
-        files.forEach(file => {
-            if (file.endsWith('.vtt') && !processedFiles.has(file)) {
-                const filePath = path.join(hlsPath, file);
-                fs.readFile(filePath, 'utf8', (err, data) => {
-                    if (err) return;
-                    if (data.startsWith('WEBVTT')) {
-                        if (!data.includes('X-TIMESTAMP-MAP')) {
-                            const lines = data.split('\n');
-                            // WEBVTT 헤더 바로 다음 줄에 삽입
-                            lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
-                            const newData = lines.join('\n');
-                            fs.writeFile(filePath, newData, 'utf8', (err) => {
-                                if (!err) {
-                                    // console.log(`[AirPlay Sync] Fixed ${file}`);
-                                    processedFiles.add(file);
-                                }
+        if (fs.existsSync(segment0Path)) {
+            // 파일이 생성되었어도 쓰기 중일 수 있으므로 잠시 대기 후 실행
+            setTimeout(() => {
+                exec(`ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${segment0Path}"`, (error, stdout) => {
+                    if (!error && stdout) {
+                        const startTime = parseFloat(stdout.trim());
+                        if (!isNaN(startTime)) {
+                            const startPts = Math.floor(startTime * 90000);
+                            console.log(`[AirPlay Sync] Detected start PTS: ${startPts}. Patching VTT files...`);
+                            
+                            // 모든 sub_*.vtt 파일 수정
+                            fs.readdir(hlsPath, (err, files) => {
+                                if (err) return;
+                                files.forEach(file => {
+                                    if (file.startsWith('sub_') && file.endsWith('.vtt')) {
+                                        const vttFile = path.join(hlsPath, file);
+                                        try {
+                                            const lines = fs.readFileSync(vttFile, 'utf8').split('\n');
+                                            if (lines.length > 0 && lines[0].trim() === 'WEBVTT') {
+                                                // 이미 패치되었는지 확인
+                                                if (lines.length > 1 && lines[1].includes('X-TIMESTAMP-MAP')) return;
+                                                
+                                                lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
+                                                fs.writeFileSync(vttFile, lines.join('\n'), 'utf8');
+                                            }
+                                        } catch (e) {
+                                            console.error(`[AirPlay Sync] Error patching ${file}:`, e);
+                                        }
+                                    }
+                                });
+                                console.log('[AirPlay Sync] VTT patching completed.');
                             });
-                        } else {
-                            processedFiles.add(file);
+                            
+                            clearInterval(checkInterval);
                         }
                     }
                 });
-            }
-        });
-    });
+            }, 1000); // 1초 후 실행
+        }
+    }, 1000); // 1초마다 확인
 }
+
+//updateMoviesWithExtraImages();
 
 // 서버 시작
 app.listen(3001, () => {
