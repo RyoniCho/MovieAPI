@@ -111,11 +111,14 @@ def process_directory(dirname):
 
     # 3. Create new master.m3u8
     resolution = get_resolution(dirname)
+    # Codecs removed to avoid AirPlay issues if they don't match exactly.
+    # The player should probe the segments.
+    
     new_master_content = f"""#EXTM3U
 #EXT-X-VERSION:3
-#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="subs.m3u8"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="hls/{dirname}/subs.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION={resolution},SUBTITLES="subs"
-video.m3u8
+hls/{dirname}/video.m3u8
 """
     with open(master_path, 'w', encoding='utf-8') as f:
         f.write(new_master_content)
