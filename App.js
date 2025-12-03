@@ -383,20 +383,26 @@ app.get('/api/stream', (req, res) => {
         // HLS 파일을 실시간으로 생성
         const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
         const hasSubtitle = fs.existsSync(vttPath);
+        const folderName = `${path.basename(videoPath, path.extname(videoPath))}_${resolution}`;
         
-        const command = ffmpeg(videoPath)
-            .outputOptions([
-                '-vf', `scale=-1:${scaleValue}`,
-                '-c:v', encoder,
-                '-crf', '20',
-                '-preset', 'veryfast',
-                '-hls_time', '10',
-                '-hls_playlist_type', 'event',
-                '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
-                '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
-            ]);
+        const command = ffmpeg(videoPath);
+        
+        // 공통 옵션
+        const outputOptions = [
+            '-vf', `scale=-1:${scaleValue}`,
+            '-c:v', encoder,
+            '-crf', '20',
+            '-preset', 'veryfast',
+            '-hls_time', '10',
+            '-hls_playlist_type', 'event',
+            '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts')
+        ];
 
         if (hasSubtitle) {
+             // 자막이 있을 경우: video.m3u8은 정적 파일 서버에서 제공되므로 base_url이 필요 없음 (상대 경로 사용)
+             // 명시적으로 빈 문자열을 주어 경로가 붙지 않도록 함
+             outputOptions.push('-hls_base_url', '');
+
              // 1. 자막 세그먼트 생성 (동기 실행)
              const subsM3u8Path = path.join(hlsPath, 'subs.m3u8');
              const subSegmentPattern = path.join(hlsPath, 'sub_%03d.vtt');
@@ -417,13 +423,16 @@ app.get('/api/stream', (req, res) => {
              }
 
              // 2. Master Playlist 수동 생성 (자막 포함)
+             // 주의: master.m3u8은 /api/stream 엔드포인트에서 제공되므로, 
+             // 내부의 m3u8 링크는 정적 파일 서버(/api/hls/...)를 가리켜야 함.
              const masterContent = `#EXTM3U
-#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="subs.m3u8",LANGUAGE="ko"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="hls/${folderName}/subs.m3u8",LANGUAGE="ko"
 #EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
-video.m3u8`;
+hls/${folderName}/video.m3u8`;
              fs.writeFileSync(path.join(hlsPath, 'master.m3u8'), masterContent);
 
              // 3. 메인 FFmpeg는 video.m3u8로 출력
+             command.outputOptions(outputOptions);
              command.output(path.join(hlsPath, 'video.m3u8'));
              
              // 4. 시작 이벤트에서 모니터링 시작
@@ -433,7 +442,10 @@ video.m3u8`;
              });
 
         } else {
-            // 자막 없음: 기존 방식대로 master.m3u8 출력
+            // 자막 없음: master.m3u8이 /api/stream에서 제공되므로, 세그먼트 경로에 base_url 필요
+            outputOptions.push('-hls_base_url', `hls/${folderName}/`);
+            
+            command.outputOptions(outputOptions);
             command.output(path.join(hlsPath, 'master.m3u8'))
                    .on('start', () => {
                         console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
