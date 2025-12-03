@@ -384,13 +384,16 @@ app.get('/api/stream', (req, res) => {
         const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
         const hasSubtitle = fs.existsSync(vttPath);
 
+        // Windows 경로 호환성을 위해 역슬래시를 슬래시로 변환
+        const cleanPath = (p) => p.replace(/\\/g, '/');
+
         // fluent-ffmpeg 대신 spawn을 사용하여 인자 전달 문제 해결
         const args = [
-            '-i', videoPath
+            '-i', cleanPath(videoPath)
         ];
 
         if (hasSubtitle) {
-            args.push('-i', vttPath);
+            args.push('-i', cleanPath(vttPath));
         }
 
         args.push(
@@ -409,18 +412,19 @@ app.get('/api/stream', (req, res) => {
                 '-map', '0:a?',
                 '-map', '1:s',
                 '-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs',
-                '-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'),
+                '-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%v_%03d')),
                 '-master_pl_name', 'master.m3u8',
-                path.join(hlsPath, 'playlist_%v.m3u8')
+                cleanPath(path.join(hlsPath, 'playlist_%v.m3u8'))
             );
         } else {
             args.push(
-                '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
-                path.join(hlsPath, 'master.m3u8')
+                '-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%03d.ts')),
+                cleanPath(path.join(hlsPath, 'master.m3u8'))
             );
         }
 
         console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
+        // console.log('FFmpeg Args:', args); // 디버깅 필요시 주석 해제
         if (hasSubtitle) console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
 
         const ffmpegProcess = spawn('ffmpeg', args);
@@ -455,13 +459,6 @@ app.get('/api/stream', (req, res) => {
                 console.error(`HLS 트랜스코딩 실패 (Exit Code: ${code})`);
             }
         });
-
-        // hasSubtitle일 경우 master.m3u8이 생성되기를 기다려야 할 수도 있지만,
-        // ffmpeg가 파일을 생성하는 시점과 res.sendFile 시점의 차이 주의.
-        // 기존 로직도 비동기 run() 후 바로 sendFile을 호출함.
-        // ffmpeg가 초기 파일을 생성할 때까지 약간의 지연이 있을 수 있음.
-        // 하지만 기존 코드가 작동했다면, 여기서도 비슷하게 작동할 것임.
-        // 단, hasSubtitle일 경우 master.m3u8은 -master_pl_name 옵션으로 생성됨.
         
         res.sendFile(path.join(hlsPath, 'master.m3u8'));
 
