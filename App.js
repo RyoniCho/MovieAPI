@@ -401,11 +401,10 @@ app.get('/api/stream', (req, res) => {
             outputOptions.push('-map', '0:a?');
             outputOptions.push('-map', '1:s');
             
-            // Windows 환경 등에서 공백이 포함된 인자가 분리되는 문제를 방지하기 위해 따옴표 처리
-            // fluent-ffmpeg가 자동으로 처리하지 못하는 경우를 대비
-            const varStreamMap = 'v:0,a:0,sgroup:subs s:0,sgroup:subs';
-            outputOptions.push('-var_stream_map', `"${varStreamMap}"`);
-            
+            // Windows 환경에서 공백이 포함된 인자 처리 문제 해결을 위해 단일 문자열로 전달
+            // fluent-ffmpeg가 문자열로 전달된 옵션을 파싱할 때 따옴표를 존중하여 처리함
+            command.outputOptions('-var_stream_map "v:0,a:0,sgroup:subs s:0,sgroup:subs"');
+
             // 확장자를 제거하여 ffmpeg가 비디오는 .ts, 자막은 .vtt로 자동 설정하도록 함
             outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'));
             outputOptions.push('-master_pl_name', 'master.m3u8');
