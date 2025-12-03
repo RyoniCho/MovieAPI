@@ -70,9 +70,20 @@ def process_directory(dirname):
 
     # 1.5 Post-process VTT segments to add X-TIMESTAMP-MAP
     # AirPlay requires this header for synchronization.
-    # We assume MPEGTS:0 corresponds to LOCAL:00:00:00.000
-    # Ideally we should match the video PTS, but 0 is a safe default for file-based HLS.
+    # We probe the first segment to get the start PTS.
     
+    start_pts = 0
+    try:
+        segment_0 = os.path.join(dir_path, 'segment_000.ts')
+        if os.path.exists(segment_0):
+            cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=start_time', '-of', 'default=noprint_wrappers=1:nokey=1', segment_0]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            start_time = float(result.stdout.strip())
+            start_pts = int(start_time * 90000)
+            print(f"Detected start PTS for {dirname}: {start_pts}")
+    except Exception as e:
+        print(f"Error probing start time: {e}, using default 0")
+
     for filename in os.listdir(dir_path):
         if filename.startswith('sub_') and filename.endswith('.vtt'):
             file_path = os.path.join(dir_path, filename)
@@ -84,7 +95,7 @@ def process_directory(dirname):
                 if len(lines) > 1 and 'X-TIMESTAMP-MAP' in lines[1]:
                     continue
                 
-                lines.insert(1, "X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000\n")
+                lines.insert(1, f"X-TIMESTAMP-MAP=MPEGTS:{start_pts},LOCAL:00:00:00.000\n")
                 
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.writelines(lines)
