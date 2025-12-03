@@ -68,6 +68,27 @@ def process_directory(dirname):
         print(f"Error generating subtitles for {dirname}: {e}")
         return
 
+    # 1.5 Post-process VTT segments to add X-TIMESTAMP-MAP
+    # AirPlay requires this header for synchronization.
+    # We assume MPEGTS:0 corresponds to LOCAL:00:00:00.000
+    # Ideally we should match the video PTS, but 0 is a safe default for file-based HLS.
+    
+    for filename in os.listdir(dir_path):
+        if filename.startswith('sub_') and filename.endswith('.vtt'):
+            file_path = os.path.join(dir_path, filename)
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+            
+            if lines and lines[0].strip() == 'WEBVTT':
+                # Check if header already exists
+                if len(lines) > 1 and 'X-TIMESTAMP-MAP' in lines[1]:
+                    continue
+                
+                lines.insert(1, "X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000\n")
+                
+                with open(file_path, 'w') as f:
+                    f.writelines(lines)
+
     # 2. Rename and Rewrite master.m3u8 -> video.m3u8
     # Read old master
     with open(master_path, 'r') as f:
