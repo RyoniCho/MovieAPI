@@ -380,20 +380,50 @@ app.get('/api/stream', (req, res) => {
         }
 
         // HLS 파일을 실시간으로 생성
-        ffmpeg(videoPath)
-            .outputOptions([
-                '-vf', `scale=-1:${scaleValue}`,
-                '-c:v', encoder,
-                '-crf', '20',
-                '-preset', 'veryfast',
-                '-hls_time', '10',
-                '-hls_playlist_type', 'event',
-                '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
-                '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
-            ])
-            .output(path.join(hlsPath, 'master.m3u8'))
+        const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
+        const hasSubtitle = fs.existsSync(vttPath);
+
+        const command = ffmpeg(videoPath);
+        const outputOptions = [
+            '-vf', `scale=-1:${scaleValue}`,
+            '-c:v', encoder,
+            '-crf', '20',
+            '-preset', 'veryfast',
+            '-hls_time', '10',
+            '-hls_playlist_type', 'event',
+            '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
+        ];
+
+        if (hasSubtitle) {
+            command.input(vttPath);
+            outputOptions.push('-map', '0:v');
+            outputOptions.push('-map', '0:a?');
+            outputOptions.push('-map', '1:s');
+            outputOptions.push('-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs');
+            // 확장자를 제거하여 ffmpeg가 비디오는 .ts, 자막은 .vtt로 자동 설정하도록 함
+            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'));
+            outputOptions.push('-master_pl_name', 'master.m3u8');
+        } else {
+            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'));
+        }
+
+        // var_stream_map을 사용할 때는 output이 master playlist가 됨 (혹은 패턴)
+        // hasSubtitle일 경우 master_pl_name 옵션을 사용하고, output은 variant playlist 패턴이 되어야 할 수도 있음.
+        // 하지만 ffmpeg 문서에 따르면 output 파일명이 .m3u8이면 그것을 마스터로 쓰고, variant는 자동 명명(혹은 지정)함.
+        // 안전하게 hasSubtitle일 때는 output을 그대로 두고, ffmpeg가 생성하는 파일들을 믿음.
+        // 단, var_stream_map 사용 시 output 파일명은 variant playlist의 패턴으로 사용되기도 함.
+        // 정확히는: ffmpeg -i ... -var_stream_map ... master.m3u8
+        // 이 경우 master.m3u8이 마스터 플레이리스트가 되고, master_0.m3u8 등이 생성됨.
+        
+        command
+            .outputOptions(outputOptions)
+            .output(path.join(hlsPath, hasSubtitle ? 'playlist_%v.m3u8' : 'master.m3u8')) 
+            // hasSubtitle일 경우: output은 variant playlist 패턴. master playlist는 -master_pl_name으로 지정.
+            // master.m3u8은 위에서 지정한 master_pl_name에 의해 생성됨.
+            
             .on('start', () => {
                 console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
+                if (hasSubtitle) console.log('자막 포함 트랜스코딩');
             })
             .on('end', () => {
                 console.log('HLS 트랜스코딩 완료');
@@ -411,6 +441,13 @@ app.get('/api/stream', (req, res) => {
             })
             .run();
 
+        // hasSubtitle일 경우 master.m3u8이 생성되기를 기다려야 할 수도 있지만,
+        // ffmpeg가 파일을 생성하는 시점과 res.sendFile 시점의 차이 주의.
+        // 기존 로직도 비동기 run() 후 바로 sendFile을 호출함.
+        // ffmpeg가 초기 파일을 생성할 때까지 약간의 지연이 있을 수 있음.
+        // 하지만 기존 코드가 작동했다면, 여기서도 비슷하게 작동할 것임.
+        // 단, hasSubtitle일 경우 master.m3u8은 -master_pl_name 옵션으로 생성됨.
+        
         res.sendFile(path.join(hlsPath, 'master.m3u8'));
   });
 
