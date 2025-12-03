@@ -16,6 +16,7 @@ const WatchHistory = require('./models/WatchHistory');
 const Favorite = require('./models/Favorite');
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
+const { exec } = require('child_process');
 
 
 const app = express();
@@ -46,7 +47,7 @@ const upload = multer({ storage });
 
 app.use(cors(
     {
-    origin: [CORS_ORIGIN,"http://localhost:3000"],
+    origin: [CORS_ORIGIN,"http://localhost:3000", "http://192.168.0.109:3000"],
     credentials: true,
 }
 )); // CORS 미들웨어 추가
@@ -423,7 +424,10 @@ app.get('/api/stream', (req, res) => {
             
             .on('start', () => {
                 console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
-                if (hasSubtitle) console.log('자막 포함 트랜스코딩');
+                if (hasSubtitle) {
+                    console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
+                    monitorAndFixSubtitles(hlsPath, command);
+                }
             })
             .on('end', () => {
                 console.log('HLS 트랜스코딩 완료');
@@ -1234,6 +1238,84 @@ app.get('/api/favorites/ids', authMiddleware, async (req, res) => {
 });
 
 //updateMoviesWithExtraImages();
+
+// AirPlay 자막 싱크 보정 모니터링 함수
+function monitorAndFixSubtitles(hlsPath, ffmpegCommand) {
+    let isFinished = false;
+    
+    // ffmpegCommand 종료 이벤트 감지
+    ffmpegCommand.on('end', () => { isFinished = true; });
+    ffmpegCommand.on('error', () => { isFinished = true; });
+
+    let ptsFound = false;
+    let startPts = 0;
+    const processedFiles = new Set();
+
+    const intervalId = setInterval(() => {
+        if (isFinished) {
+            clearInterval(intervalId);
+            // 마지막으로 한 번 더 실행
+            fixVttFiles(hlsPath, startPts, processedFiles);
+            return;
+        }
+
+        if (!ptsFound) {
+            fs.readdir(hlsPath, (err, files) => {
+                if (err) return;
+                // 비디오 세그먼트 찾기 (vtt, m3u8 제외하고 segment로 시작하는 파일)
+                const videoSegment = files.find(f => f.startsWith('segment') && !f.endsWith('.vtt') && !f.endsWith('.m3u8'));
+                
+                if (videoSegment) {
+                    const segPath = path.join(hlsPath, videoSegment);
+                    // ffprobe로 시작 시간 측정
+                    exec(`ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${segPath}"`, (error, stdout) => {
+                        if (!error && stdout) {
+                            const startTime = parseFloat(stdout.trim());
+                            if (!isNaN(startTime)) {
+                                startPts = Math.floor(startTime * 90000);
+                                ptsFound = true;
+                                console.log(`[AirPlay Sync] Detected start PTS: ${startPts} from ${videoSegment}`);
+                            }
+                        }
+                    });
+                }
+            });
+        } else {
+            // PTS를 찾았으면 VTT 파일 수정
+            fixVttFiles(hlsPath, startPts, processedFiles);
+        }
+    }, 2000); // 2초마다 확인
+}
+
+function fixVttFiles(hlsPath, startPts, processedFiles) {
+    fs.readdir(hlsPath, (err, files) => {
+        if (err) return;
+        files.forEach(file => {
+            if (file.endsWith('.vtt') && !processedFiles.has(file)) {
+                const filePath = path.join(hlsPath, file);
+                fs.readFile(filePath, 'utf8', (err, data) => {
+                    if (err) return;
+                    if (data.startsWith('WEBVTT')) {
+                        if (!data.includes('X-TIMESTAMP-MAP')) {
+                            const lines = data.split('\n');
+                            // WEBVTT 헤더 바로 다음 줄에 삽입
+                            lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
+                            const newData = lines.join('\n');
+                            fs.writeFile(filePath, newData, 'utf8', (err) => {
+                                if (!err) {
+                                    // console.log(`[AirPlay Sync] Fixed ${file}`);
+                                    processedFiles.add(file);
+                                }
+                            });
+                        } else {
+                            processedFiles.add(file);
+                        }
+                    }
+                });
+            }
+        });
+    });
+}
 
 // 서버 시작
 app.listen(3001, () => {
