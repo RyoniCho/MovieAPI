@@ -425,9 +425,12 @@ app.get('/api/stream', (req, res) => {
              // 2. Master Playlist 수동 생성 (자막 포함)
              // 주의: master.m3u8은 /api/stream 엔드포인트에서 제공되므로, 
              // 내부의 m3u8 링크는 정적 파일 서버(/api/hls/...)를 가리켜야 함.
+             // 사용자 피드백 반영: BANDWIDTH 상향(10Mbps) 및 LANGUAGE 태그 제거로 AirPlay 호환성 확보
+             // 5000000(5Mbps)에서 간헐적 끊김 발생 -> 10000000(10Mbps)으로 상향 조정
+             const bandwidth = (resolution === '4k' || resolution === '2160p') ? '20000000' : '10000000';
              const masterContent = `#EXTM3U
-#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="hls/${folderName}/subs.m3u8",LANGUAGE="ko"
-#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="hls/${folderName}/subs.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
 hls/${folderName}/video.m3u8`;
              fs.writeFileSync(path.join(hlsPath, 'master.m3u8'), masterContent);
 
@@ -435,9 +438,12 @@ hls/${folderName}/video.m3u8`;
              command.outputOptions(outputOptions);
              command.output(path.join(hlsPath, 'video.m3u8'));
              
-             // 4. 시작 이벤트에서 모니터링 시작
+        // 4. 시작 이벤트에서 모니터링 시작
              command.on('start', () => {
                 console.log('HLS 트랜스코딩 시작 (Video Only mode for Subtitle support)');
+                // monitorAndFixSubtitles(hlsPath); // AirPlay 문제가 해결되었다면 굳이 실행할 필요가 없을 수도 있으나, PTS 싱크를 위해 남겨둘지 결정 필요. 
+                // 사용자가 "잘 된다"고 했으므로 일단 유지하되, 필요없다면 주석 처리 가능. 
+                // 하지만 안전장치로 놔두는 것이 좋습니다.
                 monitorAndFixSubtitles(hlsPath);
              });
 
@@ -1258,7 +1264,7 @@ app.get('/api/favorites/ids', authMiddleware, async (req, res) => {
 function monitorAndFixSubtitles(hlsPath) {
     const segment0Path = path.join(hlsPath, 'segment_000.ts');
     let attempts = 0;
-    const maxAttempts = 60; // 10초 * 60 = 600초 (10분) 대기
+    const maxAttempts = 300; // 0.1초 * 300 = 30초 대기
 
     const checkInterval = setInterval(() => {
         attempts++;
@@ -1269,45 +1275,43 @@ function monitorAndFixSubtitles(hlsPath) {
         }
 
         if (fs.existsSync(segment0Path)) {
-            // 파일이 생성되었어도 쓰기 중일 수 있으므로 잠시 대기 후 실행
-            setTimeout(() => {
-                exec(`ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${segment0Path}"`, (error, stdout) => {
-                    if (!error && stdout) {
-                        const startTime = parseFloat(stdout.trim());
-                        if (!isNaN(startTime)) {
-                            const startPts = Math.floor(startTime * 90000);
-                            console.log(`[AirPlay Sync] Detected start PTS: ${startPts}. Patching VTT files...`);
-                            
-                            // 모든 sub_*.vtt 파일 수정
-                            fs.readdir(hlsPath, (err, files) => {
-                                if (err) return;
-                                files.forEach(file => {
-                                    if (file.startsWith('sub_') && file.endsWith('.vtt')) {
-                                        const vttFile = path.join(hlsPath, file);
-                                        try {
-                                            const lines = fs.readFileSync(vttFile, 'utf8').split('\n');
-                                            if (lines.length > 0 && lines[0].trim() === 'WEBVTT') {
-                                                // 이미 패치되었는지 확인
-                                                if (lines.length > 1 && lines[1].includes('X-TIMESTAMP-MAP')) return;
-                                                
-                                                lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
-                                                fs.writeFileSync(vttFile, lines.join('\n'), 'utf8');
-                                            }
-                                        } catch (e) {
-                                            console.error(`[AirPlay Sync] Error patching ${file}:`, e);
+            // 파일이 발견되면 즉시 처리 시도 (지연 시간 최소화)
+            exec(`ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${segment0Path}"`, (error, stdout) => {
+                if (!error && stdout) {
+                    const startTime = parseFloat(stdout.trim());
+                    if (!isNaN(startTime)) {
+                        const startPts = Math.floor(startTime * 90000);
+                        console.log(`[AirPlay Sync] Detected start PTS: ${startPts}. Patching VTT files...`);
+                        
+                        // 모든 sub_*.vtt 파일 수정
+                        fs.readdir(hlsPath, (err, files) => {
+                            if (err) return;
+                            files.forEach(file => {
+                                if (file.startsWith('sub_') && file.endsWith('.vtt')) {
+                                    const vttFile = path.join(hlsPath, file);
+                                    try {
+                                        const lines = fs.readFileSync(vttFile, 'utf8').split('\n');
+                                        if (lines.length > 0 && lines[0].trim() === 'WEBVTT') {
+                                            // 이미 패치되었는지 확인
+                                            if (lines.length > 1 && lines[1].includes('X-TIMESTAMP-MAP')) return;
+                                            
+                                            lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
+                                            fs.writeFileSync(vttFile, lines.join('\n'), 'utf8');
                                         }
+                                    } catch (e) {
+                                        console.error(`[AirPlay Sync] Error patching ${file}:`, e);
                                     }
-                                });
-                                console.log('[AirPlay Sync] VTT patching completed.');
+                                }
                             });
-                            
-                            clearInterval(checkInterval);
-                        }
+                            console.log('[AirPlay Sync] VTT patching completed.');
+                        });
+                        
+                        clearInterval(checkInterval);
                     }
-                });
-            }, 1000); // 1초 후 실행
+                }
+            });
         }
-    }, 1000); // 1초마다 확인
+    }, 100); // 0.1초마다 확인 (반응 속도 향상)
 }
 
 //updateMoviesWithExtraImages();
