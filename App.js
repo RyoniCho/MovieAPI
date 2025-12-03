@@ -97,12 +97,23 @@ const authMiddleware = (req, res, next) => {
 // 유저별 영화 시청 위치 조회 API
 app.get('/api/watch-history', authMiddleware, async (req, res) => {
     const userId = req.userId;
-    const { movieId } = req.query;
+    const { movieId, episodeIndex } = req.query;
     if (!movieId) {
         return res.status(400).json({ error: 'movieId is required' });
     }
+    
+    const epIdx = episodeIndex !== undefined ? parseInt(episodeIndex) : -1;
+
     try {
-        const history = await WatchHistory.findOne({ userId, movieId });
+        // 하위 호환성: episodeIndex가 -1인 경우, 필드가 없거나 -1인 문서를 찾음
+        let query = { userId, movieId };
+        if (epIdx === -1) {
+            query.$or = [{ episodeIndex: -1 }, { episodeIndex: { $exists: false } }];
+        } else {
+            query.episodeIndex = epIdx;
+        }
+
+        const history = await WatchHistory.findOne(query);
         if (history) {
             res.json({ lastWatchedTime: history.lastWatchedTime });
         } else {
@@ -117,13 +128,34 @@ app.get('/api/watch-history', authMiddleware, async (req, res) => {
 // 유저별 영화 시청 위치 저장/업데이트 API
 app.post('/api/watch-history', authMiddleware, async (req, res) => {
     const userId = req.userId;
-    const { movieId, lastWatchedTime } = req.body;
+    const { movieId, lastWatchedTime, episodeIndex } = req.body;
     if (!movieId || typeof lastWatchedTime !== 'number') {
         return res.status(400).json({ error: 'movieId와 lastWatchedTime(Number)가 필요합니다.' });
     }
+
+    const epIdx = episodeIndex !== undefined ? parseInt(episodeIndex) : -1;
+
     try {
+        // 업데이트 시에는 명확하게 episodeIndex를 지정하여 저장
+        // 기존 데이터 마이그레이션을 위해, 만약 epIdx가 -1이고 기존에 필드 없는 데이터가 있다면 업데이트
+        let filter = { userId, movieId, episodeIndex: epIdx };
+        
+        // (선택적) 기존 데이터 마이그레이션 로직을 여기에 넣을 수도 있지만, 
+        // 단순하게 upsert로 처리하면 새로운 포맷으로 저장됨.
+        // 다만, 기존 기록(필드 없음)을 이어받으려면 먼저 찾아보고 업데이트하는게 좋음.
+        if (epIdx === -1) {
+             const existing = await WatchHistory.findOne({ userId, movieId, episodeIndex: { $exists: false } });
+             if (existing) {
+                 existing.episodeIndex = -1;
+                 existing.lastWatchedTime = lastWatchedTime;
+                 existing.updatedAt = Date.now();
+                 await existing.save();
+                 return res.json({ success: true, lastWatchedTime: existing.lastWatchedTime });
+             }
+        }
+
         const updated = await WatchHistory.findOneAndUpdate(
-            { userId, movieId },
+            { userId, movieId, episodeIndex: epIdx },
             { lastWatchedTime, updatedAt: Date.now() },
             { upsert: true, new: true }
         );
@@ -133,6 +165,7 @@ app.post('/api/watch-history', authMiddleware, async (req, res) => {
         console.log(err);
     }
 });
+    
 
 
 
