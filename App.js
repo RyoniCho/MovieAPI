@@ -384,67 +384,44 @@ app.get('/api/stream', (req, res) => {
         const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
         const hasSubtitle = fs.existsSync(vttPath);
 
-        // Windows 경로 호환성을 위해 역슬래시를 슬래시로 변환
-        const cleanPath = (p) => p.replace(/\\/g, '/');
-
-        // fluent-ffmpeg로 복귀 (spawn 대신)
-        const command = ffmpeg(cleanPath(videoPath));
-        
+        const command = ffmpeg(videoPath);
         const outputOptions = [
-            '-vf', `scale=-2:${scaleValue}`, // 짝수 너비 보장
+            '-vf', `scale=-1:${scaleValue}`,
             '-c:v', encoder,
+            '-crf', '20',
             '-preset', 'veryfast',
             '-hls_time', '10',
             '-hls_playlist_type', 'event',
             '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
         ];
 
-        // 인코더별 품질 및 포맷 옵션
-        if (encoder === 'libx264') {
-            outputOptions.push('-crf', '20');
-        } else if (encoder === 'h264_qsv') {
-            outputOptions.push('-global_quality', '20');
-            // QSV는 nv12 포맷 필요. vf 옵션 수정
-            outputOptions[0] = `-vf scale=-2:${scaleValue},format=nv12`;
-        } else if (encoder === 'h264_videotoolbox') {
-            outputOptions.push('-q:v', '60');
-        }
-
         if (hasSubtitle) {
-            command.input(cleanPath(vttPath));
+            command.input(vttPath);
             outputOptions.push('-map', '0:v');
             outputOptions.push('-map', '0:a?');
             outputOptions.push('-map', '1:s');
             outputOptions.push('-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs');
-            
-            // fluent-ffmpeg가 인자를 처리하도록 함. 확장자 없이 전달 (기존 코드와 동일)
-            outputOptions.push('-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%v_%03d')));
+            // 확장자를 제거하여 ffmpeg가 비디오는 .ts, 자막은 .vtt로 자동 설정하도록 함
+            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'));
             outputOptions.push('-master_pl_name', 'master.m3u8');
         } else {
-            outputOptions.push('-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%03d.ts')));
+            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'));
         }
 
         command
             .outputOptions(outputOptions)
-            .output(cleanPath(path.join(hlsPath, hasSubtitle ? 'playlist_%v.m3u8' : 'master.m3u8'))) 
-            
+            .output(path.join(hlsPath, hasSubtitle ? 'playlist_%v.m3u8' : 'master.m3u8')) 
             .on('start', () => {
                 console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
                 if (hasSubtitle) {
-                    console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
+                    console.log('자막 포함 트랜스코딩');
                     monitorAndFixSubtitles(hlsPath, command);
                 }
             })
             .on('end', () => {
                 console.log('HLS 트랜스코딩 완료');
-                try {
-                    if (fs.existsSync(videoPath)) {
-                        fs.unlinkSync(videoPath);
-                        console.log(`${videoPath} : file removed`);
-                    }
-                } catch (e) {
-                    console.error('파일 삭제 중 오류:', e);
-                }
+                fs.unlinkSync(videoPath);
+                console.log(`${videoPath} : file removed`);
             })
             .on('stderr', (stderr) => {
                 console.log('stderr 로그:', stderr);
@@ -456,8 +433,6 @@ app.get('/api/stream', (req, res) => {
                 }
             })
             .run();
-        
-        res.sendFile(path.join(hlsPath, 'master.m3u8'));
 
         // hasSubtitle일 경우 master.m3u8이 생성되기를 기다려야 할 수도 있지만,
         // ffmpeg가 파일을 생성하는 시점과 res.sendFile 시점의 차이 주의.
