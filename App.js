@@ -482,7 +482,7 @@ app.get('/api/download', authMiddleware, (req, res) => {
 // 라우팅 설정
 app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'image' }, { name: 'trailer' },{name:'extraImage'}]), async (req, res) => {
     try{
-        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMovie,subscriptExist} = req.body;
+        const { title, description, serialNumber, actor, plexRegistered,releaseDate,category,urlImage,urlsExtraImage,urlTrailer,mainMovie,subscriptExist, isSeries, episodes} = req.body;
 
         let mainMovieObj ={};
         try{
@@ -491,6 +491,33 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
         catch(err)
         {
             mainMovieObj={};
+        }
+
+        let episodesArr = [];
+        if (isSeries === 'true' || isSeries === true) {
+            try {
+                episodesArr = JSON.parse(episodes);
+                // Auto-detect subtitles for episodes
+                const checkOrder = ['1080p', '720p', '4k', '2160p'];
+                for (let ep of episodesArr) {
+                    // If sub is not explicitly provided, try to find it
+                    if (!ep.sub) {
+                        for (const q of checkOrder) {
+                            if (ep.video && ep.video[q]) {
+                                // Replace extension with .vtt
+                                const ext = path.extname(ep.video[q]);
+                                const vttPath = ep.video[q].replace(ext, '.vtt');
+                                if (fs.existsSync(path.join(__dirname, vttPath))) {
+                                    ep.sub = vttPath;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                episodesArr = [];
+            }
         }
         
         let imagePath;
@@ -610,7 +637,9 @@ app.post('/api/movies',authMiddleware,requireAdmin, upload.fields([{ name: 'imag
             extraImage:extraImagePaths,
             mainMovie : mainMovieObj,
             mainMovieSub: mainMovieSubPath,
-            subscriptExist
+            subscriptExist,
+            isSeries: isSeries === 'true' || isSeries === true,
+            episodes: episodesArr
             
     
     
@@ -887,6 +916,31 @@ app.put('/api/movies/:id', authMiddleware, requireAdmin, putUpload, async (req, 
             mainMovieObj = {};
         }
 
+        let episodesArr = [];
+        if (body.isSeries === 'true' || body.isSeries === true) {
+            try {
+                episodesArr = typeof body.episodes === 'string' ? JSON.parse(body.episodes) : body.episodes;
+                // Auto-detect subtitles for episodes
+                const checkOrder = ['1080p', '720p', '4k', '2160p'];
+                for (let ep of episodesArr) {
+                    if (!ep.sub) {
+                        for (const q of checkOrder) {
+                            if (ep.video && ep.video[q]) {
+                                const ext = path.extname(ep.video[q]);
+                                const vttPath = ep.video[q].replace(ext, '.vtt');
+                                if (fs.existsSync(path.join(__dirname, vttPath))) {
+                                    ep.sub = vttPath;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch {
+                episodesArr = [];
+            }
+        }
+
         // 대표 이미지 처리
         let imagePath;
         if (body.urlImage && body.urlImage !== '') {
@@ -936,6 +990,8 @@ app.put('/api/movies/:id', authMiddleware, requireAdmin, putUpload, async (req, 
             mainMovie: mainMovieObj,
             mainMovieSub: mainMovieSubPath,
             trailer: body.trailer,
+            isSeries: body.isSeries === 'true' || body.isSeries === true,
+            episodes: episodesArr
         };
         if (imagePath) updateFields.image = imagePath;
         if (extraImagePaths.length > 0) updateFields.extraImage = extraImagePaths;

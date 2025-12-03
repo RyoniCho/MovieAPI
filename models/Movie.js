@@ -4,12 +4,22 @@ const mongoose = require('mongoose');
 const movieSchema = new mongoose.Schema({
   serialNumber: { type: String, required: true, unique: true },
   title: { type: String, required: true },      // 영화 제목 (필수)
-  actor: { type: String, required: true },      // 배우(필수)
+  actor: { 
+    type: String, 
+    required: function() { return this.category === 'AdultVideo'; } 
+  },      // 배우(필수 - AdultVideo인 경우에만)
   image: { type: String, required: true },      // 영화 이미지 파일 경로 (필수)
   extraImage:{type: [String],default:[]},  //Extra Image
   trailer: { type: String, required: false, default: '' },    // 예고편 영상 파일 경로 (옵션)
   mainMovie: {type: Map, of: String, required: false, default:{}}, // 영화 메인 본펀 경로 (옵션)
   mainMovieSub:{type:String, default:''}, // 영화 메인 본편 자막 경로(있을경우에만 사용.)
+  isSeries: { type: Boolean, default: false }, // 시리즈 여부
+  episodes: [{
+      title: { type: String, required: true },
+      description: { type: String, default: '' }, // 에피소드 설명
+      video: { type: Map, of: String, default: {} }, // 에피소드별 영상 경로 (화질별)
+      sub: { type: String, default: '' } // 에피소드별 자막
+  }],
   plexRegistered: { type: Boolean, default: false }, //plex에 등록된건지
   subscriptExist: {type:Boolean, default:false}, //자막이 존재하는지
   description: { type: String, default: '' },   // 영화 설명 (선택)
