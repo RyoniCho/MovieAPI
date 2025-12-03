@@ -16,7 +16,7 @@ const WatchHistory = require('./models/WatchHistory');
 const Favorite = require('./models/Favorite');
 const jwt = require('jsonwebtoken');
 const { isFloat32Array } = require('util/types');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 
 
 const app = express();
@@ -384,8 +384,16 @@ app.get('/api/stream', (req, res) => {
         const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
         const hasSubtitle = fs.existsSync(vttPath);
 
-        const command = ffmpeg(videoPath);
-        const outputOptions = [
+        // fluent-ffmpeg 대신 spawn을 사용하여 인자 전달 문제 해결
+        const args = [
+            '-i', videoPath
+        ];
+
+        if (hasSubtitle) {
+            args.push('-i', vttPath);
+        }
+
+        args.push(
             '-vf', `scale=-1:${scaleValue}`,
             '-c:v', encoder,
             '-crf', '20',
@@ -393,61 +401,69 @@ app.get('/api/stream', (req, res) => {
             '-hls_time', '10',
             '-hls_playlist_type', 'event',
             '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
-        ];
+        );
 
         if (hasSubtitle) {
-            command.input(vttPath);
-            outputOptions.push('-map', '0:v');
-            outputOptions.push('-map', '0:a?');
-            outputOptions.push('-map', '1:s');
-            
-            // Windows 환경에서 공백이 포함된 인자 처리 문제 해결을 위해 단일 문자열로 전달
-            // fluent-ffmpeg가 문자열로 전달된 옵션을 파싱할 때 따옴표를 존중하여 처리함
-            outputOptions.push('-var_stream_map', 'v:0,a:0,sgroup:subs "s:0,sgroup:subs"');
-
-            // 확장자를 제거하여 ffmpeg가 비디오는 .ts, 자막은 .vtt로 자동 설정하도록 함
-            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'));
-            outputOptions.push('-master_pl_name', 'master.m3u8');
+            args.push(
+                '-map', '0:v',
+                '-map', '0:a?',
+                '-map', '1:s',
+                '-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs',
+                '-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'),
+                '-master_pl_name', 'master.m3u8',
+                path.join(hlsPath, 'playlist_%v.m3u8')
+            );
         } else {
-            outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'));
+            args.push(
+                '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts'),
+                path.join(hlsPath, 'master.m3u8')
+            );
         }
 
-        // var_stream_map을 사용할 때는 output이 master playlist가 됨 (혹은 패턴)
-        // hasSubtitle일 경우 master_pl_name 옵션을 사용하고, output은 variant playlist 패턴이 되어야 할 수도 있음.
-        // 하지만 ffmpeg 문서에 따르면 output 파일명이 .m3u8이면 그것을 마스터로 쓰고, variant는 자동 명명(혹은 지정)함.
-        // 안전하게 hasSubtitle일 때는 output을 그대로 두고, ffmpeg가 생성하는 파일들을 믿음.
-        // 단, var_stream_map 사용 시 output 파일명은 variant playlist의 패턴으로 사용되기도 함.
-        // 정확히는: ffmpeg -i ... -var_stream_map ... master.m3u8
-        // 이 경우 master.m3u8이 마스터 플레이리스트가 되고, master_0.m3u8 등이 생성됨.
-        
-        command
-            .outputOptions(outputOptions)
-            .output(path.join(hlsPath, hasSubtitle ? 'playlist_%v.m3u8' : 'master.m3u8')) 
-            // hasSubtitle일 경우: output은 variant playlist 패턴. master playlist는 -master_pl_name으로 지정.
-            // master.m3u8은 위에서 지정한 master_pl_name에 의해 생성됨.
-            
-            .on('start', () => {
-                console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
-                if (hasSubtitle) {
-                    console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
-                    monitorAndFixSubtitles(hlsPath, command);
-                }
-            })
-            .on('end', () => {
+        console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
+        if (hasSubtitle) console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
+
+        const ffmpegProcess = spawn('ffmpeg', args);
+
+        if (hasSubtitle) {
+            monitorAndFixSubtitles(hlsPath, ffmpegProcess);
+        }
+
+        ffmpegProcess.stderr.on('data', (data) => {
+            console.log('stderr 로그:', data.toString());
+        });
+
+        ffmpegProcess.on('error', (err) => {
+            console.error('HLS 트랜스코딩 오류:', err);
+            if (!res.headersSent) {
+                res.status(500).send('HLS 트랜스코딩 중 오류 발생');
+            }
+        });
+
+        ffmpegProcess.on('exit', (code) => {
+            if (code === 0) {
                 console.log('HLS 트랜스코딩 완료');
-                fs.unlinkSync(videoPath);
-                console.log(`${videoPath} : file removed`);
-            })
-            .on('stderr', (stderr) => {
-                console.log('stderr 로그:', stderr);
-            })
-            .on('error', (err) => {
-                console.error('HLS 트랜스코딩 오류:', err);
-                if (!res.headersSent) {
-                    res.status(500).send('HLS 트랜스코딩 중 오류 발생');
+                try {
+                    if (fs.existsSync(videoPath)) {
+                        fs.unlinkSync(videoPath);
+                        console.log(`${videoPath} : file removed`);
+                    }
+                } catch (e) {
+                    console.error('파일 삭제 중 오류:', e);
                 }
-            })
-            .run();
+            } else {
+                console.error(`HLS 트랜스코딩 실패 (Exit Code: ${code})`);
+            }
+        });
+
+        // hasSubtitle일 경우 master.m3u8이 생성되기를 기다려야 할 수도 있지만,
+        // ffmpeg가 파일을 생성하는 시점과 res.sendFile 시점의 차이 주의.
+        // 기존 로직도 비동기 run() 후 바로 sendFile을 호출함.
+        // ffmpeg가 초기 파일을 생성할 때까지 약간의 지연이 있을 수 있음.
+        // 하지만 기존 코드가 작동했다면, 여기서도 비슷하게 작동할 것임.
+        // 단, hasSubtitle일 경우 master.m3u8은 -master_pl_name 옵션으로 생성됨.
+        
+        res.sendFile(path.join(hlsPath, 'master.m3u8'));
 
         // hasSubtitle일 경우 master.m3u8이 생성되기를 기다려야 할 수도 있지만,
         // ffmpeg가 파일을 생성하는 시점과 res.sendFile 시점의 차이 주의.
@@ -1244,12 +1260,14 @@ app.get('/api/favorites/ids', authMiddleware, async (req, res) => {
 //updateMoviesWithExtraImages();
 
 // AirPlay 자막 싱크 보정 모니터링 함수
-function monitorAndFixSubtitles(hlsPath, ffmpegCommand) {
+function monitorAndFixSubtitles(hlsPath, ffmpegProcess) {
     let isFinished = false;
     
-    // ffmpegCommand 종료 이벤트 감지
-    ffmpegCommand.on('end', () => { isFinished = true; });
-    ffmpegCommand.on('error', () => { isFinished = true; });
+    // ffmpegProcess 종료 이벤트 감지 (fluent-ffmpeg: end/error, spawn: exit/error)
+    const onFinish = () => { isFinished = true; };
+    ffmpegProcess.on('end', onFinish);
+    ffmpegProcess.on('exit', onFinish);
+    ffmpegProcess.on('error', onFinish);
 
     let ptsFound = false;
     let startPts = 0;
