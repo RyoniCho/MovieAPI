@@ -375,7 +375,7 @@ app.get('/api/stream', (req, res) => {
             if (isMac) {
                 encoder = 'h264_videotoolbox';
             } else {
-                // Intel Quick Sync (h264_qsv) 우선, 실제 지원 여부는 ffmpeg 빌드에 따라 다름
+                // Intel Quick Sync (h264_qsv) 우선
                 encoder = 'h264_qsv';
             }
         }
@@ -399,12 +399,27 @@ app.get('/api/stream', (req, res) => {
         args.push(
             '-vf', `scale=-1:${scaleValue}`,
             '-c:v', encoder,
-            '-crf', '20',
-            '-preset', 'veryfast',
             '-hls_time', '10',
             '-hls_playlist_type', 'event',
             '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
         );
+
+        // 인코더별 품질 제어 옵션 분기 처리
+        if (encoder === 'libx264') {
+            args.push('-crf', '20');
+            args.push('-preset', 'veryfast');
+        } else if (encoder === 'h264_qsv') {
+             // QSV는 -crf를 지원하지 않음. -global_quality (ICQ) 사용
+             args.push('-global_quality', '20'); 
+             args.push('-preset', 'veryfast');
+        } else if (encoder === 'h264_videotoolbox') {
+             // macOS VideoToolbox는 -q:v (0-100) 사용
+             args.push('-q:v', '60'); 
+        } else {
+            // 그 외 인코더(혹은 fallback)는 기본 비트레이트나 crf 시도
+            args.push('-crf', '20');
+            args.push('-preset', 'veryfast');
+        }
 
         if (hasSubtitle) {
             args.push(
