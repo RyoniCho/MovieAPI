@@ -90,29 +90,32 @@ def process_directory(dirname):
                     f.writelines(lines)
 
     # 2. Rename and Rewrite master.m3u8 -> video.m3u8
-    # Read old master
-    with open(master_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    
-    # Rewrite lines to remove prefix
-    prefix = f"hls/{dirname}/"
-    new_lines = []
-    for line in lines:
-        if line.strip().startswith(prefix):
-            new_lines.append(line.replace(prefix, ''))
-        else:
-            new_lines.append(line)
-            
-    with open(video_path, 'w', encoding='utf-8') as f:
-        f.writelines(new_lines)
+    if not os.path.exists(video_path):
+        # Read old master
+        with open(master_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Rewrite lines to remove prefix
+        prefix = f"hls/{dirname}/"
+        new_lines = []
+        for line in lines:
+            if line.strip().startswith(prefix):
+                new_lines.append(line.replace(prefix, ''))
+            else:
+                new_lines.append(line)
+                
+        with open(video_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+    else:
+        print(f"video.m3u8 already exists for {dirname}, skipping creation.")
 
     # 3. Create new master.m3u8
     resolution = get_resolution(dirname)
     new_master_content = f"""#EXTM3U
 #EXT-X-VERSION:3
-#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="hls/{dirname}/subs.m3u8"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="subs.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION={resolution},SUBTITLES="subs"
-hls/{dirname}/video.m3u8
+video.m3u8
 """
     with open(master_path, 'w', encoding='utf-8') as f:
         f.write(new_master_content)
