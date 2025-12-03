@@ -387,81 +387,55 @@ app.get('/api/stream', (req, res) => {
         // Windows 경로 호환성을 위해 역슬래시를 슬래시로 변환
         const cleanPath = (p) => p.replace(/\\/g, '/');
 
-        // fluent-ffmpeg 대신 spawn을 사용하여 인자 전달 문제 해결
-        const args = [
-            '-i', cleanPath(videoPath)
-        ];
-
-        if (hasSubtitle) {
-            args.push('-i', cleanPath(vttPath));
-        }
-
-        args.push(
-            '-vf', `scale=-1:${scaleValue}`,
+        // fluent-ffmpeg로 복귀 (spawn 대신)
+        const command = ffmpeg(cleanPath(videoPath));
+        
+        const outputOptions = [
+            '-vf', `scale=-2:${scaleValue}`, // 짝수 너비 보장
             '-c:v', encoder,
+            '-preset', 'veryfast',
             '-hls_time', '10',
             '-hls_playlist_type', 'event',
             '-hls_base_url', `hls/${path.basename(videoPath, path.extname(videoPath))}_${resolution}/`
-        );
+        ];
 
-        // 인코더별 품질 제어 옵션 분기 처리
+        // 인코더별 품질 및 포맷 옵션
         if (encoder === 'libx264') {
-            args.push('-crf', '20');
-            args.push('-preset', 'veryfast');
+            outputOptions.push('-crf', '20');
         } else if (encoder === 'h264_qsv') {
-             // QSV는 -crf를 지원하지 않음. -global_quality (ICQ) 사용
-             args.push('-global_quality', '20'); 
-             args.push('-preset', 'veryfast');
+            outputOptions.push('-global_quality', '20');
+            // QSV는 nv12 포맷 필요. vf 옵션 수정
+            outputOptions[0] = `-vf scale=-2:${scaleValue},format=nv12`;
         } else if (encoder === 'h264_videotoolbox') {
-             // macOS VideoToolbox는 -q:v (0-100) 사용
-             args.push('-q:v', '60'); 
-        } else {
-            // 그 외 인코더(혹은 fallback)는 기본 비트레이트나 crf 시도
-            args.push('-crf', '20');
-            args.push('-preset', 'veryfast');
+            outputOptions.push('-q:v', '60');
         }
 
         if (hasSubtitle) {
-            args.push(
-                '-map', '0:v',
-                '-map', '0:a?',
-                '-map', '1:s',
-                // Windows 환경에서 spawn 사용 시 인자 분리 문제 해결을 위해 따옴표 추가
-                '-var_stream_map', '"v:0,a:0,sgroup:subs s:0,sgroup:subs"',
-                '-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%v_%03d')),
-                '-master_pl_name', 'master.m3u8',
-                cleanPath(path.join(hlsPath, 'playlist_%v.m3u8'))
-            );
+            command.input(cleanPath(vttPath));
+            outputOptions.push('-map', '0:v');
+            outputOptions.push('-map', '0:a?');
+            outputOptions.push('-map', '1:s');
+            outputOptions.push('-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs');
+            
+            // fluent-ffmpeg가 인자를 처리하도록 함. 확장자 없이 전달 (기존 코드와 동일)
+            outputOptions.push('-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%v_%03d')));
+            outputOptions.push('-master_pl_name', 'master.m3u8');
         } else {
-            args.push(
-                '-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%03d.ts')),
-                cleanPath(path.join(hlsPath, 'master.m3u8'))
-            );
+            outputOptions.push('-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%03d.ts')));
         }
 
-        console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
-        // console.log('FFmpeg Args:', args); // 디버깅 필요시 주석 해제
-        if (hasSubtitle) console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
-
-        const ffmpegProcess = spawn('ffmpeg', args);
-
-        if (hasSubtitle) {
-            monitorAndFixSubtitles(hlsPath, ffmpegProcess);
-        }
-
-        ffmpegProcess.stderr.on('data', (data) => {
-            console.log('stderr 로그:', data.toString());
-        });
-
-        ffmpegProcess.on('error', (err) => {
-            console.error('HLS 트랜스코딩 오류:', err);
-            if (!res.headersSent) {
-                res.status(500).send('HLS 트랜스코딩 중 오류 발생');
-            }
-        });
-
-        ffmpegProcess.on('exit', (code) => {
-            if (code === 0) {
+        command
+            .outputOptions(outputOptions)
+            .output(cleanPath(path.join(hlsPath, hasSubtitle ? 'playlist_%v.m3u8' : 'master.m3u8'))) 
+            
+            .on('start', () => {
+                console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
+                if (hasSubtitle) {
+                    console.log('자막 포함 트랜스코딩 - AirPlay 싱크 보정 모니터링 시작');
+                    monitorAndFixSubtitles(hlsPath, command);
+                }
+            })
+            .on('end', () => {
                 console.log('HLS 트랜스코딩 완료');
                 try {
                     if (fs.existsSync(videoPath)) {
@@ -471,10 +445,17 @@ app.get('/api/stream', (req, res) => {
                 } catch (e) {
                     console.error('파일 삭제 중 오류:', e);
                 }
-            } else {
-                console.error(`HLS 트랜스코딩 실패 (Exit Code: ${code})`);
-            }
-        });
+            })
+            .on('stderr', (stderr) => {
+                console.log('stderr 로그:', stderr);
+            })
+            .on('error', (err) => {
+                console.error('HLS 트랜스코딩 오류:', err);
+                if (!res.headersSent) {
+                    res.status(500).send('HLS 트랜스코딩 중 오류 발생');
+                }
+            })
+            .run();
         
         res.sendFile(path.join(hlsPath, 'master.m3u8'));
 
