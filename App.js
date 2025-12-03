@@ -426,7 +426,8 @@ app.get('/api/stream', (req, res) => {
                 '-map', '0:v',
                 '-map', '0:a?',
                 '-map', '1:s',
-                '-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs',
+                // Windows 환경에서 spawn 사용 시 인자 분리 문제 해결을 위해 따옴표 추가
+                '-var_stream_map', '"v:0,a:0,sgroup:subs s:0,sgroup:subs"',
                 '-hls_segment_filename', cleanPath(path.join(hlsPath, 'segment_%v_%03d')),
                 '-master_pl_name', 'master.m3u8',
                 cleanPath(path.join(hlsPath, 'playlist_%v.m3u8'))
