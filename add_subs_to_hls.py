@@ -40,7 +40,7 @@ def process_directory(dirname):
     if not os.path.exists(master_path): return
 
     # Check if already processed (if master contains STREAM-INF)
-    with open(master_path, 'r') as f:
+    with open(master_path, 'r', encoding='utf-8') as f:
         content = f.read()
         if '#EXT-X-STREAM-INF' in content:
             print(f"Already processed: {dirname}")
@@ -76,7 +76,7 @@ def process_directory(dirname):
     for filename in os.listdir(dir_path):
         if filename.startswith('sub_') and filename.endswith('.vtt'):
             file_path = os.path.join(dir_path, filename)
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
             if lines and lines[0].strip() == 'WEBVTT':
@@ -86,12 +86,12 @@ def process_directory(dirname):
                 
                 lines.insert(1, "X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000\n")
                 
-                with open(file_path, 'w') as f:
+                with open(file_path, 'w', encoding='utf-8') as f:
                     f.writelines(lines)
 
     # 2. Rename and Rewrite master.m3u8 -> video.m3u8
     # Read old master
-    with open(master_path, 'r') as f:
+    with open(master_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     
     # Rewrite lines to remove prefix
@@ -103,7 +103,7 @@ def process_directory(dirname):
         else:
             new_lines.append(line)
             
-    with open(video_path, 'w') as f:
+    with open(video_path, 'w', encoding='utf-8') as f:
         f.writelines(new_lines)
 
     # 3. Create new master.m3u8
@@ -114,7 +114,7 @@ def process_directory(dirname):
 #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION={resolution},SUBTITLES="subs"
 hls/{dirname}/video.m3u8
 """
-    with open(master_path, 'w') as f:
+    with open(master_path, 'w', encoding='utf-8') as f:
         f.write(new_master_content)
     
     print(f"Done: {dirname}")
