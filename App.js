@@ -400,7 +400,12 @@ app.get('/api/stream', (req, res) => {
             outputOptions.push('-map', '0:v');
             outputOptions.push('-map', '0:a?');
             outputOptions.push('-map', '1:s');
-            outputOptions.push('-var_stream_map', 'v:0,a:0,sgroup:subs s:0,sgroup:subs');
+            
+            // Windows 환경 등에서 공백이 포함된 인자가 분리되는 문제를 방지하기 위해 따옴표 처리
+            // fluent-ffmpeg가 자동으로 처리하지 못하는 경우를 대비
+            const varStreamMap = 'v:0,a:0,sgroup:subs s:0,sgroup:subs';
+            outputOptions.push('-var_stream_map', `"${varStreamMap}"`);
+            
             // 확장자를 제거하여 ffmpeg가 비디오는 .ts, 자막은 .vtt로 자동 설정하도록 함
             outputOptions.push('-hls_segment_filename', path.join(hlsPath, 'segment_%v_%03d'));
             outputOptions.push('-master_pl_name', 'master.m3u8');
