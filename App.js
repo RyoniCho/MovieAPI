@@ -418,8 +418,39 @@ app.get('/api/stream', (req, res) => {
                  console.log('Generating subtitle segments...');
                  execSync(ffmpegSubCmd);
                  console.log('Subtitle segments generated.');
+
+                 // [AirPlay Sync Fix] Race Condition 방지를 위한 선제적 패치
+                 // 비디오 트랜스코딩이 시작되기 전에 입력 파일의 시작 시간을 기반으로 VTT를 미리 패치합니다.
+                 // 이렇게 하면 클라이언트가 sub_000.vtt를 요청할 때 이미 패치된 파일을 받게 됩니다.
+                 let startPts = 0;
+                 try {
+                     const probeCmd = `ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+                     const stdout = execSync(probeCmd).toString();
+                     const startTime = parseFloat(stdout.trim());
+                     if (!isNaN(startTime)) {
+                         startPts = Math.floor(startTime * 90000);
+                         console.log(`[Pre-Patch] Input video start time: ${startTime}s, PTS: ${startPts}`);
+                     }
+                 } catch (e) {
+                     console.error("[Pre-Patch] Failed to probe input video start time:", e);
+                 }
+
+                 const files = fs.readdirSync(hlsPath);
+                 files.forEach(file => {
+                     if (file.startsWith('sub_') && file.endsWith('.vtt')) {
+                         const vttFile = path.join(hlsPath, file);
+                         const lines = fs.readFileSync(vttFile, 'utf8').split('\n');
+                         if (lines.length > 0 && lines[0].trim() === 'WEBVTT') {
+                             if (lines.length > 1 && lines[1].includes('X-TIMESTAMP-MAP')) return;
+                             lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
+                             fs.writeFileSync(vttFile, lines.join('\n'), 'utf8');
+                         }
+                     }
+                 });
+                 console.log('[Pre-Patch] Subtitle VTT files patched immediately.');
+
              } catch (e) {
-                 console.error("Subtitle generation failed", e);
+                 console.error("Subtitle generation/patching failed", e);
              }
 
              // 2. Master Playlist 수동 생성 (자막 포함)
@@ -441,10 +472,8 @@ hls/${folderName}/video.m3u8`;
         // 4. 시작 이벤트에서 모니터링 시작
              command.on('start', () => {
                 console.log('HLS 트랜스코딩 시작 (Video Only mode for Subtitle support)');
-                // monitorAndFixSubtitles(hlsPath); // AirPlay 문제가 해결되었다면 굳이 실행할 필요가 없을 수도 있으나, PTS 싱크를 위해 남겨둘지 결정 필요. 
-                // 사용자가 "잘 된다"고 했으므로 일단 유지하되, 필요없다면 주석 처리 가능. 
-                // 하지만 안전장치로 놔두는 것이 좋습니다.
-                monitorAndFixSubtitles(hlsPath);
+                // [AirPlay Sync] 선제적 패치(Pre-Patch)가 적용되었으므로 비동기 모니터링은 비활성화합니다.
+                // monitorAndFixSubtitles(hlsPath); 
              });
 
         } else {
