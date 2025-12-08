@@ -119,6 +119,12 @@ def parse_smi(content: str) -> Dict[str, List[Dict]]:
             lang_match = re.search(r'lang:\s*([a-zA-Z-]+)', props, re.IGNORECASE)
             if lang_match:
                 code = lang_match.group(1).split('-')[0].lower()
+                # 언어 코드 정규화 (kr -> ko, kor -> ko 등)
+                if code in ['kr', 'kor', 'korean', 'korea']: code = 'ko'
+                elif code in ['eng', 'english']: code = 'en'
+                elif code in ['jp', 'jap', 'japanese', 'japan']: code = 'ja'
+                elif code in ['ch', 'chn', 'chinese', 'china']: code = 'zh'
+                
                 class_map[cls_name] = code
             elif cls_name in lang_map:
                 class_map[cls_name] = lang_map[cls_name]
