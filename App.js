@@ -347,7 +347,20 @@ app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution;
     
-    const hlsPath = path.join(__dirname, 'hls', `${path.basename(videoPath, path.extname(videoPath))}_${resolution}`);
+    // [Path Logic Update] Preserve directory structure relative to 'uploads/' or 'hls/'
+    let relativeDir = path.dirname(videoPath).replace(/\\/g, '/');
+    if (relativeDir === '.') relativeDir = '';
+
+    if (relativeDir.startsWith('uploads/') || relativeDir === 'uploads') {
+        relativeDir = relativeDir.replace(/^uploads\/?/, '');
+    } else if (relativeDir.startsWith('hls/') || relativeDir === 'hls') {
+        relativeDir = relativeDir.replace(/^hls\/?/, '');
+    }
+    relativeDir = relativeDir.replace(/^\//, '');
+
+    const filenameBase = path.basename(videoPath, path.extname(videoPath));
+    const folderName = relativeDir ? `${relativeDir}/${filenameBase}_${resolution}` : `${filenameBase}_${resolution}`;
+    const hlsPath = path.join(__dirname, 'hls', ...folderName.split('/'));
     
     // hlsPath 폴더가 없으면 생성
     fs_extra.ensureDirSync(hlsPath);
@@ -383,7 +396,7 @@ app.get('/api/stream', (req, res) => {
         // HLS 파일을 실시간으로 생성
         const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
         const hasSubtitle = fs.existsSync(vttPath);
-        const folderName = `${path.basename(videoPath, path.extname(videoPath))}_${resolution}`;
+        // const folderName = `${path.basename(videoPath, path.extname(videoPath))}_${resolution}`;
         
         const command = ffmpeg(videoPath);
         
@@ -517,8 +530,19 @@ app.get('/api/download', authMiddleware, (req, res) => {
     }
 
     // HLS 폴더 경로 구성 (api/stream과 동일한 로직)
+    let relativeDir = path.dirname(videoPath).replace(/\\/g, '/');
+    if (relativeDir === '.') relativeDir = '';
+
+    if (relativeDir.startsWith('uploads/') || relativeDir === 'uploads') {
+        relativeDir = relativeDir.replace(/^uploads\/?/, '');
+    } else if (relativeDir.startsWith('hls/') || relativeDir === 'hls') {
+        relativeDir = relativeDir.replace(/^hls\/?/, '');
+    }
+    relativeDir = relativeDir.replace(/^\//, '');
+
     const filenameBase = path.basename(videoPath, path.extname(videoPath));
-    const hlsPath = path.join(__dirname, 'hls', `${filenameBase}_${resolution}`);
+    const folderName = relativeDir ? `${relativeDir}/${filenameBase}_${resolution}` : `${filenameBase}_${resolution}`;
+    const hlsPath = path.join(__dirname, 'hls', ...folderName.split('/'));
     const m3u8Path = path.join(hlsPath, 'master.m3u8');
     console.log("Download requested for: " + m3u8Path);
 
@@ -534,7 +558,7 @@ app.get('/api/download', authMiddleware, (req, res) => {
     try {
         let m3u8Content = fs.readFileSync(m3u8Path, 'utf8');
         // "hls/폴더명/" 패턴을 제거하여 파일명만 남김
-        const prefixToRemove = `hls/${filenameBase}_${resolution}/`;
+        const prefixToRemove = `hls/${folderName}/`;
         // 정규식으로 모든 발생 패턴 제거
         const regex = new RegExp(prefixToRemove.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
         m3u8Content = m3u8Content.replace(regex, '');
