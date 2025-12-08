@@ -479,20 +479,15 @@ app.get('/api/stream', (req, res) => {
                  try {
                      console.log(`Processing subtitles for ${sub.lang} (Single File Mode)...`);
                      
-                     // 1-1. 비디오 정보 조회 (Duration, Start Time) - 한 번만 조회하면 좋지만 간단하게 반복
+                     // 1-1. 비디오 정보 조회 (Duration)
                      let duration = 0;
-                     let startPts = 0;
+                     // HLS 트랜스코딩 시 PTS는 0으로 리셋되므로 startPts는 0으로 고정
+                     const startPts = 0;
 
                      try {
                         const durationCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
-                        const startTimeCmd = `ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
-                        
                         const durationStr = execSync(durationCmd).toString().trim();
-                        const startTimeStr = execSync(startTimeCmd).toString().trim();
-                        
                         duration = parseFloat(durationStr) || 0;
-                        const startTime = parseFloat(startTimeStr) || 0;
-                        startPts = Math.floor(startTime * 90000);
                      } catch (probeErr) {
                          console.error("Failed to probe video info:", probeErr);
                          duration = 7200; // 실패 시 기본값
