@@ -341,7 +341,16 @@ async function resolveAvailableTrailerUrlFromPlaylist(playlistUrl, originalFileN
   
 
 
-app.use('/api/hls', express.static(path.join(__dirname, 'hls')));
+app.use('/api/hls', express.static(path.join(__dirname, 'hls'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.vtt')) {
+            res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+        }
+        // CORS 헤더 강제 추가 (혹시 모를 이슈 방지)
+        res.setHeader('Access-Control-Allow-Origin', req => req.headers.origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+}));
 
 app.get('/api/stream', (req, res) => {
     const videoPath = req.query.file;
