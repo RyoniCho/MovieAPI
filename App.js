@@ -419,33 +419,9 @@ app.get('/api/stream', (req, res) => {
         }
 
         // HLS 파일을 실시간으로 생성
-        // 다국어 자막 검색
-        const foundSubtitles = [];
-        const dir = path.dirname(videoPath);
-        const ext = path.extname(videoPath);
-        const baseName = path.basename(videoPath, ext);
-
-        // 1. 기본 한국어 자막 (filename.vtt)
-        const defaultVttPath = videoPath.replace(ext, '.vtt');
-        if (fs.existsSync(defaultVttPath)) {
-            foundSubtitles.push({ lang: 'ko', name: 'Korean', file: defaultVttPath, isDefault: true });
-        }
-
-        // 2. 추가 언어 자막 (filename.lang.vtt)
-        const supportedLangs = [
-            { code: 'en', name: 'English' },
-            { code: 'ja', name: 'Japanese' },
-            { code: 'zh', name: 'Chinese' }
-        ];
-
-        supportedLangs.forEach(l => {
-            const langVttPath = path.join(dir, `${baseName}.${l.code}.vtt`);
-            if (fs.existsSync(langVttPath)) {
-                foundSubtitles.push({ lang: l.code, name: l.name, file: langVttPath, isDefault: false });
-            }
-        });
-
-        const hasSubtitle = foundSubtitles.length > 0;
+        const vttPath = videoPath.replace(path.extname(videoPath), '.vtt');
+        const hasSubtitle = fs.existsSync(vttPath);
+        // const folderName = `${path.basename(videoPath, path.extname(videoPath))}_${resolution}`;
         
         const command = ffmpeg(videoPath);
         
@@ -462,82 +438,81 @@ app.get('/api/stream', (req, res) => {
 
         if (hasSubtitle) {
              // 자막이 있을 경우: video.m3u8은 정적 파일 서버에서 제공되므로 base_url이 필요 없음 (상대 경로 사용)
+             // 명시적으로 빈 문자열을 주어 경로가 붙지 않도록 함
              outputOptions.push('-hls_base_url', '');
 
-             let subtitleMediaLines = '';
+             // 1. 자막 처리 (단일 파일 방식 - AirPlay 탐색 문제 해결)
+             // 세그먼트 방식 대신 전체 VTT를 하나의 청크로 제공하여 플레이어가 전체 타임라인을 알 수 있게 함
+             const subsM3u8Path = path.join(hlsPath, 'subs.m3u8');
+             const fullSubPath = path.join(hlsPath, 'subs.vtt');
+             
+             const cleanVttPath = vttPath.replace(/\\/g, '/');
 
-             // 1. 각 자막 파일 처리
-             foundSubtitles.forEach(sub => {
-                 const subsM3u8Name = `subs_${sub.lang}.m3u8`;
-                 const subsVttName = `subs_${sub.lang}.vtt`;
+             try {
+                 console.log('Processing subtitles (Single File Mode)...');
                  
-                 const subsM3u8Path = path.join(hlsPath, subsM3u8Name);
-                 const fullSubPath = path.join(hlsPath, subsVttName);
-                 
-                 const cleanVttPath = sub.file.replace(/\\/g, '/');
+                 // 1-1. 비디오 정보 조회 (Duration, Start Time)
+                 let duration = 0;
+                 let startPts = 0;
 
                  try {
-                     console.log(`Processing subtitles for ${sub.lang} (Single File Mode)...`);
-                     
-                     // 1-1. 비디오 정보 조회 (Duration, Start Time) - 한 번만 조회하면 좋지만 간단하게 반복
-                     let duration = 0;
-                     let startPts = 0;
+                    const durationCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+                    const startTimeCmd = `ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+                    
+                    const durationStr = execSync(durationCmd).toString().trim();
+                    const startTimeStr = execSync(startTimeCmd).toString().trim();
+                    
+                    duration = parseFloat(durationStr) || 0;
+                    const startTime = parseFloat(startTimeStr) || 0;
+                    startPts = Math.floor(startTime * 90000);
+                    
+                    console.log(`[Subtitle] Duration: ${duration}s, StartTime: ${startTime}s, PTS: ${startPts}`);
+                 } catch (probeErr) {
+                     console.error("Failed to probe video info:", probeErr);
+                     duration = 7200; // 실패 시 기본값
+                 }
 
-                     try {
-                        const durationCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
-                        const startTimeCmd = `ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
-                        
-                        const durationStr = execSync(durationCmd).toString().trim();
-                        const startTimeStr = execSync(startTimeCmd).toString().trim();
-                        
-                        duration = parseFloat(durationStr) || 0;
-                        const startTime = parseFloat(startTimeStr) || 0;
-                        startPts = Math.floor(startTime * 90000);
-                     } catch (probeErr) {
-                         console.error("Failed to probe video info:", probeErr);
-                         duration = 7200; // 실패 시 기본값
+                 // 1-2. VTT 파일 읽기 및 헤더 수정 (X-TIMESTAMP-MAP 추가)
+                 let vttContent = fs.readFileSync(cleanVttPath, 'utf8');
+                 const lines = vttContent.split('\n');
+                 
+                 if (lines.length > 0 && lines[0].trim().startsWith('WEBVTT')) {
+                     const hasHeader = lines.some(l => l.includes('X-TIMESTAMP-MAP'));
+                     if (!hasHeader) {
+                          lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
+                          vttContent = lines.join('\n');
                      }
-
-                     // 1-2. VTT 파일 읽기 및 헤더 수정 (X-TIMESTAMP-MAP 추가)
-                     let vttContent = fs.readFileSync(cleanVttPath, 'utf8');
-                     const lines = vttContent.split('\n');
-                     
-                     if (lines.length > 0 && lines[0].trim().startsWith('WEBVTT')) {
-                         const hasHeader = lines.some(l => l.includes('X-TIMESTAMP-MAP'));
-                         if (!hasHeader) {
-                              lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
-                              vttContent = lines.join('\n');
-                         }
-                     }
-                     
-                     // 1-3. 수정된 VTT 저장
-                     fs.writeFileSync(fullSubPath, vttContent, 'utf8');
-                     
-                     // 1-4. subs.m3u8 생성 (단일 세그먼트)
-                     const m3u8Content = `#EXTM3U
+                 }
+                 
+                 // 1-3. 수정된 VTT 저장
+                 fs.writeFileSync(fullSubPath, vttContent, 'utf8');
+                 
+                 // 1-4. subs.m3u8 생성 (단일 세그먼트)
+                 const m3u8Content = `#EXTM3U
 #EXT-X-TARGETDURATION:${Math.ceil(duration)}
 #EXT-X-VERSION:3
 #EXT-X-MEDIA-SEQUENCE:0
 #EXT-X-PLAYLIST-TYPE:VOD
 #EXTINF:${duration},
-${subsVttName}
+subs.vtt
 #EXT-X-ENDLIST`;
-        
-                     fs.writeFileSync(subsM3u8Path, m3u8Content, 'utf8');
-                     
-                     // Master Playlist용 라인 추가
-                     // GROUP-ID="subs"로 통일
-                     subtitleMediaLines += `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="${sub.name}",LANGUAGE="${sub.lang}",DEFAULT=${sub.isDefault?'YES':'NO'},AUTOSELECT=YES,URI="hls/${folderName}/${subsM3u8Name}"\n`;
+    
+                 fs.writeFileSync(subsM3u8Path, m3u8Content, 'utf8');
+                 console.log('Subtitle playlist generated (Single File).');
 
-                 } catch (e) {
-                     console.error(`Subtitle processing failed for ${sub.lang}`, e);
-                 }
-             });
+             } catch (e) {
+                 console.error("Subtitle processing failed", e);
+             }
 
              // 2. Master Playlist 수동 생성 (자막 포함)
+             // 주의: master.m3u8은 /api/stream 엔드포인트에서 제공되므로, 
+             // 내부의 m3u8 링크는 정적 파일 서버(/api/hls/...)를 가리켜야 함.
+             // 사용자 피드백 반영: BANDWIDTH 상향(10Mbps) 및 LANGUAGE 태그 제거로 AirPlay 호환성 확보
+             // 5000000(5Mbps)에서 간헐적 끊김 발생 -> 10000000(10Mbps)으로 상향 조정
              const bandwidth = (resolution === '4k' || resolution === '2160p') ? '20000000' : '10000000';
              const masterContent = `#EXTM3U
-${subtitleMediaLines}#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Korean",DEFAULT=YES,AUTOSELECT=YES,URI="hls/${folderName}/subs.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
 hls/${folderName}/video.m3u8`;
              fs.writeFileSync(path.join(hlsPath, 'master.m3u8'), masterContent);
 
@@ -545,8 +520,11 @@ hls/${folderName}/video.m3u8`;
              command.outputOptions(outputOptions);
              command.output(path.join(hlsPath, 'video.m3u8'));
              
+        // 4. 시작 이벤트에서 모니터링 시작
              command.on('start', () => {
-                console.log('HLS 트랜스코딩 시작 (Video Only mode for Multi-Subtitle support)');
+                console.log('HLS 트랜스코딩 시작 (Video Only mode for Subtitle support)');
+                // [AirPlay Sync] 선제적 패치(Pre-Patch)가 적용되었으므로 비동기 모니터링은 비활성화합니다.
+                // monitorAndFixSubtitles(hlsPath); 
              });
 
         } else {
