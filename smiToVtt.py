@@ -66,18 +66,29 @@ def ms_to_timestamp(ms: int, separator: str = '.') -> str:
     return f"{hours:02}:{minutes:02}:{seconds:02}{separator}{milliseconds:03}"
 
 def clean_smi_text(text: str) -> str:
-    """SMI 텍스트 정제: 태그 제거, 엔티티 변환"""
+    """SMI 텍스트 정제: 태그 제거, 엔티티 변환, 줄바꿈 정리"""
     if not text:
         return ""
-    # <br> -> 줄바꿈
-    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
-    # 기타 태그 제거
+    
+    # 1. <br>을 임시 마커로 변경 (공백을 둬서 붙어있는 텍스트 분리 방지)
+    text = re.sub(r'<br\s*/?>', ' __BR__ ', text, flags=re.IGNORECASE)
+    
+    # 2. 기타 태그 제거
     text = re.sub(r'<[^>]+>', '', text)
-    # HTML 엔티티 디코딩 (&nbsp; 등)
+    
+    # 3. HTML 엔티티 디코딩 (&nbsp; 등)
     text = html.unescape(text)
     
-    # VTT 포맷에서 빈 줄은 큐의 끝을 의미하므로, 연속된 줄바꿈을 하나로 합침
-    text = re.sub(r'\n+', '\n', text)
+    # 4. 모든 공백(줄바꿈, 탭 포함)을 단일 공백으로 치환 (HTML 렌더링 규칙)
+    #    SMI 파일 내의 소스 줄바꿈은 실제 줄바꿈이 아닌 공백으로 처리되어야 함
+    text = re.sub(r'\s+', ' ', text)
+    
+    # 5. 마커를 실제 줄바꿈으로 복원
+    text = text.replace(' __BR__ ', '\n').replace('__BR__', '\n')
+    
+    # 6. 각 줄의 앞뒤 공백 제거 및 빈 줄 제거 (연속된 줄바꿈 방지)
+    lines = [line.strip() for line in text.split('\n')]
+    text = '\n'.join([l for l in lines if l])
 
     return text.strip()
 
