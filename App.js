@@ -346,9 +346,25 @@ app.use('/api/hls', express.static(path.join(__dirname, 'hls'), {
         if (path.endsWith('.vtt')) {
             res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
         }
-        // CORS 헤더 강제 추가 (혹시 모를 이슈 방지)
-        res.setHeader('Access-Control-Allow-Origin', req => req.headers.origin || '*');
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        // CORS 헤더 중복 방지: 이미 설정되어 있다면 덮어쓰지 않거나, 하나만 설정
+        if (!res.getHeader('Access-Control-Allow-Origin')) {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+        // Credentials는 * 와 함께 사용할 수 없음. 필요하다면 특정 도메인을 명시해야 함.
+        // 여기서는 단순 정적 파일 서빙이므로 Credentials 제거하고 * 로 허용하거나,
+        // 클라이언트에서 withCredentials를 안 쓰도록 해야 함.
+        // 하지만 HLS.js나 비디오 태그가 credential을 요구할 수 있으므로,
+        // Origin을 동적으로 설정하는 것이 안전함.
+        
+        // 기존 미들웨어(cors 패키지)가 이미 헤더를 세팅했을 수 있음.
+        // express.static은 미들웨어 체인 상단에 있을 수 있으므로 주의.
+        
+        // 가장 확실한 방법: 기존 헤더 제거 후 재설정
+        res.removeHeader('Access-Control-Allow-Origin');
+        res.removeHeader('Access-Control-Allow-Credentials');
+        
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        // res.setHeader('Access-Control-Allow-Credentials', 'true'); // * 와 함께 사용 불가
     }
 }));
 
