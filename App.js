@@ -441,54 +441,67 @@ app.get('/api/stream', (req, res) => {
              // 명시적으로 빈 문자열을 주어 경로가 붙지 않도록 함
              outputOptions.push('-hls_base_url', '');
 
-             // 1. 자막 세그먼트 생성 (동기 실행)
+             // 1. 자막 처리 (단일 파일 방식 - AirPlay 탐색 문제 해결)
+             // 세그먼트 방식 대신 전체 VTT를 하나의 청크로 제공하여 플레이어가 전체 타임라인을 알 수 있게 함
              const subsM3u8Path = path.join(hlsPath, 'subs.m3u8');
-             const subSegmentPattern = path.join(hlsPath, 'sub_%03d.vtt');
+             const fullSubPath = path.join(hlsPath, 'subs.vtt');
              
-             // Windows 경로 호환성 처리
              const cleanVttPath = vttPath.replace(/\\/g, '/');
-             const cleanSubsM3u8Path = subsM3u8Path.replace(/\\/g, '/');
-             const cleanSubSegmentPattern = subSegmentPattern.replace(/\\/g, '/');
 
-             const ffmpegSubCmd = `ffmpeg -y -i "${cleanVttPath}" -c:s webvtt -f segment -segment_time 10 -segment_list "${cleanSubsM3u8Path}" -segment_list_type hls -segment_format webvtt "${cleanSubSegmentPattern}"`;
-             
              try {
-                 console.log('Generating subtitle segments...');
-                 execSync(ffmpegSubCmd);
-                 console.log('Subtitle segments generated.');
-
-                 // [AirPlay Sync Fix] Race Condition 방지를 위한 선제적 패치
-                 // 비디오 트랜스코딩이 시작되기 전에 입력 파일의 시작 시간을 기반으로 VTT를 미리 패치합니다.
-                 // 이렇게 하면 클라이언트가 sub_000.vtt를 요청할 때 이미 패치된 파일을 받게 됩니다.
+                 console.log('Processing subtitles (Single File Mode)...');
+                 
+                 // 1-1. 비디오 정보 조회 (Duration, Start Time)
+                 let duration = 0;
                  let startPts = 0;
+
                  try {
-                     const probeCmd = `ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
-                     const stdout = execSync(probeCmd).toString();
-                     const startTime = parseFloat(stdout.trim());
-                     if (!isNaN(startTime)) {
-                         startPts = Math.floor(startTime * 90000);
-                         console.log(`[Pre-Patch] Input video start time: ${startTime}s, PTS: ${startPts}`);
-                     }
-                 } catch (e) {
-                     console.error("[Pre-Patch] Failed to probe input video start time:", e);
+                    const durationCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+                    const startTimeCmd = `ffprobe -v error -show_entries format=start_time -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+                    
+                    const durationStr = execSync(durationCmd).toString().trim();
+                    const startTimeStr = execSync(startTimeCmd).toString().trim();
+                    
+                    duration = parseFloat(durationStr) || 0;
+                    const startTime = parseFloat(startTimeStr) || 0;
+                    startPts = Math.floor(startTime * 90000);
+                    
+                    console.log(`[Subtitle] Duration: ${duration}s, StartTime: ${startTime}s, PTS: ${startPts}`);
+                 } catch (probeErr) {
+                     console.error("Failed to probe video info:", probeErr);
+                     duration = 7200; // 실패 시 기본값
                  }
 
-                 const files = fs.readdirSync(hlsPath);
-                 files.forEach(file => {
-                     if (file.startsWith('sub_') && file.endsWith('.vtt')) {
-                         const vttFile = path.join(hlsPath, file);
-                         const lines = fs.readFileSync(vttFile, 'utf8').split('\n');
-                         if (lines.length > 0 && lines[0].trim() === 'WEBVTT') {
-                             if (lines.length > 1 && lines[1].includes('X-TIMESTAMP-MAP')) return;
-                             lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
-                             fs.writeFileSync(vttFile, lines.join('\n'), 'utf8');
-                         }
+                 // 1-2. VTT 파일 읽기 및 헤더 수정 (X-TIMESTAMP-MAP 추가)
+                 let vttContent = fs.readFileSync(cleanVttPath, 'utf8');
+                 const lines = vttContent.split('\n');
+                 
+                 if (lines.length > 0 && lines[0].trim().startsWith('WEBVTT')) {
+                     const hasHeader = lines.some(l => l.includes('X-TIMESTAMP-MAP'));
+                     if (!hasHeader) {
+                          lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
+                          vttContent = lines.join('\n');
                      }
-                 });
-                 console.log('[Pre-Patch] Subtitle VTT files patched immediately.');
+                 }
+                 
+                 // 1-3. 수정된 VTT 저장
+                 fs.writeFileSync(fullSubPath, vttContent, 'utf8');
+                 
+                 // 1-4. subs.m3u8 생성 (단일 세그먼트)
+                 const m3u8Content = `#EXTM3U
+#EXT-X-TARGETDURATION:${Math.ceil(duration)}
+#EXT-X-VERSION:3
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXTINF:${duration},
+subs.vtt
+#EXT-X-ENDLIST`;
+    
+                 fs.writeFileSync(subsM3u8Path, m3u8Content, 'utf8');
+                 console.log('Subtitle playlist generated (Single File).');
 
              } catch (e) {
-                 console.error("Subtitle generation/patching failed", e);
+                 console.error("Subtitle processing failed", e);
              }
 
              // 2. Master Playlist 수동 생성 (자막 포함)
