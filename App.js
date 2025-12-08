@@ -940,6 +940,8 @@ app.get('/api/movies',authMiddleware, async (req, res) => {
     }
     if (category) {
         filter.category = category;
+    } else {
+        filter.category = { $ne: 'AdultVideo' };
     }
 
     console.log(`page: ${page}`);
