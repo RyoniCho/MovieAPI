@@ -75,6 +75,10 @@ def clean_smi_text(text: str) -> str:
     text = re.sub(r'<[^>]+>', '', text)
     # HTML 엔티티 디코딩 (&nbsp; 등)
     text = html.unescape(text)
+    
+    # VTT 포맷에서 빈 줄은 큐의 끝을 의미하므로, 연속된 줄바꿈을 하나로 합침
+    text = re.sub(r'\n+', '\n', text)
+
     return text.strip()
 
 def parse_smi(content: str) -> Dict[str, List[Dict]]:
