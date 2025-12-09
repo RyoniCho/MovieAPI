@@ -492,6 +492,17 @@ app.get('/api/stream', (req, res) => {
                         
                         duration = parseFloat(durationStr) || 0;
                         const startTime = parseFloat(startTimeStr) || 0;
+                        
+                        // 자막이 1.5초(1500ms) 빨리 나온다면, MPEGTS 값을 1.5초만큼 줄여야 합니다. (PTS 기준 90000 * 1.5 = 135000)
+                        // 혹은 LOCAL 시간을 1.5초 뒤로 미뤄야 합니다.
+                        // 여기서는 startPts(MPEGTS)를 조정하여 싱크를 맞춥니다.
+                        // 자막이 빠르다 -> 자막의 0초가 비디오의 더 늦은 시간(높은 PTS)에 매핑되어야 함 -> PTS 값을 높여야 함?
+                        // 아니요, 자막이 빠르다는 건 자막이 먼저 나온다는 뜻.
+                        // 즉, 비디오의 특정 시점(PTS)에 자막의 0초가 매핑되어 있는데, 그 PTS가 너무 낮게 잡혀서 일찍 나오는 것일 수 있음.
+                        // 하지만 보통은 "자막이 빠르다" = "자막이 영상보다 먼저 뜬다" -> 자막을 늦춰야 함.
+                        // 자막을 늦추려면: 자막의 0초가 비디오의 더 나중 시점(더 큰 PTS)과 매핑되어야 함.
+                        // 따라서 startPts에 오프셋을 더해줍니다. (1.5초 = 135000)
+                        // const syncOffset = 1.5 * 90000; 
                         startPts = Math.floor(startTime * 90000);
                      } catch (probeErr) {
                          console.error("Failed to probe video info:", probeErr);
@@ -576,6 +587,9 @@ hls/${folderName}/video.m3u8`;
                 }
             })
             .run();
+
+        // AirPlay/HLS 자막 싱크 자동 보정 시작
+        monitorAndFixSubtitles(hlsPath);
 
         res.sendFile(path.join(hlsPath, 'master.m3u8'));
   });
@@ -1402,14 +1416,15 @@ function monitorAndFixSubtitles(hlsPath) {
                         fs.readdir(hlsPath, (err, files) => {
                             if (err) return;
                             files.forEach(file => {
-                                if (file.startsWith('sub_') && file.endsWith('.vtt')) {
+                                if (file.startsWith('subs_') && file.endsWith('.vtt')) {
                                     const vttFile = path.join(hlsPath, file);
                                     try {
-                                        const lines = fs.readFileSync(vttFile, 'utf8').split('\n');
-                                        if (lines.length > 0 && lines[0].trim() === 'WEBVTT') {
-                                            // 이미 패치되었는지 확인
-                                            if (lines.length > 1 && lines[1].includes('X-TIMESTAMP-MAP')) return;
+                                        let lines = fs.readFileSync(vttFile, 'utf8').split('\n');
+                                        if (lines.length > 0 && lines[0].trim().startsWith('WEBVTT')) {
+                                            // 기존 헤더가 있다면 제거 (업데이트를 위해)
+                                            lines = lines.filter(l => !l.startsWith('X-TIMESTAMP-MAP'));
                                             
+                                            // 정확한 PTS로 헤더 삽입
                                             lines.splice(1, 0, `X-TIMESTAMP-MAP=MPEGTS:${startPts},LOCAL:00:00:00.000`);
                                             fs.writeFileSync(vttFile, lines.join('\n'), 'utf8');
                                         }
