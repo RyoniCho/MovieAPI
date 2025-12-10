@@ -576,6 +576,22 @@ hls/${folderName}/video.m3u8`;
                 console.log('HLS 트랜스코딩 완료');
                 fs.unlinkSync(videoPath);
                 console.log(`${videoPath} : file removed`);
+
+                // [Size Calculation] Calculate total size of .ts files and save to total_size.txt
+                try {
+                    const files = fs.readdirSync(hlsPath);
+                    let totalSize = 0;
+                    files.forEach(file => {
+                        if (file.endsWith('.ts')) {
+                            const stats = fs.statSync(path.join(hlsPath, file));
+                            totalSize += stats.size;
+                        }
+                    });
+                    fs.writeFileSync(path.join(hlsPath, 'total_size.txt'), totalSize.toString());
+                    console.log(`Total HLS size recorded: ${totalSize} bytes`);
+                } catch (sizeErr) {
+                    console.error('Error calculating/saving total size:', sizeErr);
+                }
             })
             .on('stderr', (stderr) => {
                 console.log('stderr 로그:', stderr);
@@ -651,6 +667,22 @@ app.get('/api/download', authMiddleware, (req, res) => {
     // 다운로드 헤더 설정
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadFilename)}"`);
     res.setHeader('Content-Type', 'video/mp4');
+
+    // [Size Header] If total_size.txt exists, set Content-Length (Approximate)
+    const sizePath = path.join(hlsPath, 'total_size.txt');
+    if (fs.existsSync(sizePath)) {
+        try {
+            const totalSize = fs.readFileSync(sizePath, 'utf8');
+            const sizeNum = parseInt(totalSize, 10);
+            if (!isNaN(sizeNum)) {
+                res.setHeader('Content-Length', sizeNum);
+                res.setHeader('X-File-Size', sizeNum); // Custom header just in case
+                console.log(`Setting Content-Length to ${sizeNum} (from total_size.txt)`);
+            }
+        } catch (err) {
+            console.error('Error reading total_size.txt:', err);
+        }
+    }
 
     console.log(`Starting download (Remuxing) for: ${downloadFilename}`);
 
