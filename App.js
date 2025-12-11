@@ -39,6 +39,7 @@ app.use('/api', require('./routes/logs')); // Mounts /api/user-action-log and /a
 app.use('/api', require('./routes/watchHistory')); // Mounts /api/watch-history and /api/admin/watch-histories
 app.use('/api/favorites', require('./routes/favorites'));
 app.use('/api/stream', require('./routes/streaming'));
+app.use('/api/download', require('./routes/download'));
 
 const PORT = 3001;
 app.listen(PORT, () => {

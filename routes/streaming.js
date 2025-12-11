@@ -181,21 +181,6 @@ hls/${folderName}/video.m3u8`;
                 console.log('HLS 트랜스코딩 완료');
                 fs.unlinkSync(videoPath);
                 console.log(`${videoPath} : file removed`);
-
-                try {
-                    const files = fs.readdirSync(hlsPath);
-                    let totalSize = 0;
-                    files.forEach(file => {
-                        if (file.endsWith('.ts')) {
-                            const stats = fs.statSync(path.join(hlsPath, file));
-                            totalSize += stats.size;
-                        }
-                    });
-                    fs.writeFileSync(path.join(hlsPath, 'total_size.txt'), totalSize.toString());
-                    console.log(`Total HLS size recorded: ${totalSize} bytes`);
-                } catch (sizeErr) {
-                    console.error('Error calculating/saving total size:', sizeErr);
-                }
             })
             .on('stderr', (stderr) => {
                 console.log('stderr 로그:', stderr);
