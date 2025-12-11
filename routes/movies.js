@@ -60,36 +60,42 @@ router.post('/', authMiddleware, requireAdmin, cpUpload, async (req, res) => {
         }
 
         let trailerPath;
+        const defaultDummyTrailerPath = `uploads/SSNI-289_1723546895296.mp4`;
         let trailerDownloadFailed = false;
-        const defaultDummyTrailerPath = 'uploads/dummy_trailer.mp4';
 
         if (urlTrailer && urlTrailer !== '') {
-            if (urlTrailer.includes('javtrailers.com')) {
+            try {
+                trailerPath = await downloadContents(serialNumber, urlTrailer);
+            } catch {
                 try {
-                    console.log("Try Download JAV trailer HLS");
-                    const fileName = serialNumber + "_" + Date.now() + ".mp4";
-                    const outputFilePath = path.join('uploads', fileName);
-                    
-                    const { finalUrl, originalFileName } = transformSubtituteTrailerUrl(urlTrailer, serialNumber);
+                    trailerPath = await downloadContents(serialNumber, urlTrailer.replace("_mhb_w", "_dm_w"));
+                } catch (err) {
+                    try {
+                        console.log("Try Download JAV trailer HLS");
+                        const fileName = serialNumber + "_" + Date.now() + ".mp4";
+                        const outputFilePath = path.join('uploads', fileName);
+                        
+                        const { finalUrl, originalFileName } = transformSubtituteTrailerUrl(urlTrailer, serialNumber);
 
-                    let finalTrailerUrl;
-                    if (finalUrl && finalUrl.includes('playlist.m3u8')) {
-                        finalTrailerUrl = await resolveAvailableTrailerUrlFromPlaylist(finalUrl, originalFileName);
-                    } else {
-                        finalTrailerUrl = finalUrl;
-                    }
+                        let finalTrailerUrl;
+                        if (finalUrl && finalUrl.includes('playlist.m3u8')) {
+                            finalTrailerUrl = await resolveAvailableTrailerUrlFromPlaylist(finalUrl, originalFileName);
+                        } else {
+                            finalTrailerUrl = finalUrl;
+                        }
 
-                    if (finalTrailerUrl && finalTrailerUrl.endsWith('.mp4')) {
-                        trailerPath = await downloadContents(serialNumber, finalTrailerUrl);
-                    } else if (finalTrailerUrl) {
-                        await handleHLSDownload(finalTrailerUrl, outputFilePath);
-                        trailerPath = outputFilePath;
-                    } else {
+                        if (finalTrailerUrl && finalTrailerUrl.endsWith('.mp4')) {
+                            trailerPath = await downloadContents(serialNumber, finalTrailerUrl);
+                        } else if (finalTrailerUrl) {
+                            await handleHLSDownload(finalTrailerUrl, outputFilePath);
+                            trailerPath = outputFilePath;
+                        } else {
+                            trailerDownloadFailed = true;
+                        }
+                    } catch (err) {
+                        console.log("Trailer download failed, using dummy trailer.");
                         trailerDownloadFailed = true;
                     }
-                } catch (err) {
-                    console.log("Trailer download failed, using dummy trailer.");
-                    trailerDownloadFailed = true;
                 }
             }
         } else if (req.files.trailer && req.files.trailer.length > 0) {
