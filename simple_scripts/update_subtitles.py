@@ -101,43 +101,84 @@ def update_subtitles(vtt_file, hls_folder, lang_code, lang_name):
 
 
     # 3. master.m3u8 파일을 수정합니다.
+    print(f"'{master_playlist_path}' 파일을 읽고 수정합니다...")
     with open(master_playlist_path, 'r', encoding='utf-8') as f:
         master_lines = f.readlines()
 
-    new_master_lines = []
-    subtitle_group_exists = False
-    new_subtitle_media_line = f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="{lang_name}",LANGUAGE="{lang_code}",DEFAULT=NO,AUTOSELECT=YES,URI="{subs_m3u8_name}"\n'
+    # URI에 사용될 정규화된 경로 (예: hls/your_movie_1080p)
+    normalized_hls_path = hls_folder.replace(os.sep, '/')
 
-    # 기존 자막 라인 제거 및 자막 그룹 존재 여부 확인
+    # 새 자막 라인 생성 (전체 경로 URI 사용)
+    subtitle_uri = f"{normalized_hls_path}/{subs_m3u8_name}"
+    new_subtitle_media_line = f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="{lang_name}",LANGUAGE="{lang_code}",DEFAULT=NO,AUTOSELECT=YES,URI="{subtitle_uri}"\n'
+
+    # 기존에 동일한 언어의 자막 정의가 있다면 제거
+    temp_lines = []
     for line in master_lines:
-        if line.startswith('#EXT-X-MEDIA:TYPE=SUBTITLES'):
-            subtitle_group_exists = True
-            # 현재 추가하려는 언어와 다른 자막 라인만 유지
-            if f'LANGUAGE="{lang_code}"' not in line:
-                new_master_lines.append(line)
-        else:
-            new_master_lines.append(line)
+        if line.startswith('#EXT-X-MEDIA:TYPE=SUBTITLES') and f'LANGUAGE="{lang_code}"' in line:
+            print(f"기존 '{lang_code}' 자막 라인을 교체합니다: {line.strip()}")
+            continue
+        temp_lines.append(line)
+    master_lines = temp_lines
+    
+    # 새 자막 라인을 #EXT-X-STREAM-INF 이전에 삽입
+    stream_inf_found = False
+    new_master_lines = []
+    # #EXTM3U는 유지
+    if master_lines and master_lines[0].startswith('#EXTM3U'):
+        new_master_lines.append(master_lines[0])
+        master_lines = master_lines[1:]
 
-    # 새로운 자막 라인 추가
-    inserted = False
+    for line in master_lines:
+        if line.startswith('#EXT-X-STREAM-INF') and not stream_inf_found:
+            new_master_lines.append(new_subtitle_media_line)
+            stream_inf_found = True
+        # 다른 언어의 자막 라인은 그대로 추가
+        if line.startswith('#EXT-X-MEDIA:TYPE=SUBTITLES'):
+             # 경로가 절대 경로가 아니면 수정
+            if 'URI="' in line and 'hls/' not in line:
+                uri_part = re.search(r'URI="([^"]+)"', line)
+                if uri_part:
+                    old_uri = uri_part.group(1)
+                    new_uri = f"{normalized_hls_path}/{old_uri}"
+                    line = line.replace(f'URI="{old_uri}"', f'URI="{new_uri}"')
+        new_master_lines.append(line)
+
+    # 만약 #EXT-X-STREAM-INF가 없다면, 파일의 적절한 위치에 삽입
+    if not stream_inf_found:
+        # #EXT-X-MEDIA 태그들 뒤에, 혹은 파일 시작 부분에 추가
+        media_tag_found = False
+        for i, line in enumerate(new_master_lines):
+            if line.startswith('#EXT-X-MEDIA'):
+                media_tag_found = True
+            elif media_tag_found and not line.startswith('#EXT-X-MEDIA'):
+                new_master_lines.insert(i, new_subtitle_media_line)
+                stream_inf_found = True # 처리 완료 플래그
+                break
+        if not stream_inf_found:
+            new_master_lines.append(new_subtitle_media_line)
+
+
+    # 최종적으로 경로와 속성을 수정
     final_lines = []
     for line in new_master_lines:
-        # 비디오 스트림 정보 위에 자막 정보를 추가합니다.
-        if line.startswith('#EXT-X-STREAM-INF') and not inserted:
-            final_lines.append(new_subtitle_media_line)
-            inserted = True
-        final_lines.append(line)
-    
-    # 스트림 정보가 없는 경우 파일 끝에 추가 (일반적이지 않은 경우)
-    if not inserted:
-        final_lines.insert(1, new_subtitle_media_line)
+        # 1. 비디오 스트림 정보에 SUBTITLES="subs" 속성 추가/확인
+        if line.startswith('#EXT-X-STREAM-INF'):
+            if 'SUBTITLES=' not in line:
+                final_lines.append(line.strip() + ',SUBTITLES="subs"\n')
+            else:
+                final_lines.append(line)
+        # 2. 비디오 플레이리스트 경로가 전체 경로인지 확인하고 수정
+        elif line.strip().endswith('video.m3u8'):
+            playlist_filename = os.path.basename(line.strip())
+            expected_path = f"{normalized_hls_path}/{playlist_filename}"
+            if line.strip() != expected_path:
+                final_lines.append(expected_path + '\n')
+            else:
+                final_lines.append(line)
+        else:
+            final_lines.append(line)
 
-
-    # 비디오 스트림 정보에 SUBTITLES="subs" 속성 추가
-    for i, line in enumerate(final_lines):
-        if line.startswith('#EXT-X-STREAM-INF') and 'SUBTITLES=' not in line:
-            final_lines[i] = line.strip() + ',SUBTITLES="subs"\n'
-    
     with open(master_playlist_path, 'w', encoding='utf-8') as f:
         f.writelines(final_lines)
 
