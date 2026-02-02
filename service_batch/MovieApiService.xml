@@ -7,7 +7,7 @@
   <description>Movie Project Node.js API Server</description>
 
   <!-- 실행할 명령어 (node) -->
-  <executable>node</executable>
+  <executable>C:\Program Files\nodejs\node.exe</executable>
   <!-- 실행 인자 (App.js 경로) -->
   <argument>C:\Development\CollectionWeb\MovieAPI\App.js</argument>
 
