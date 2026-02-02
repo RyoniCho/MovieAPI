@@ -7,9 +7,9 @@
   <description>Movie Project Node.js API Server</description>
 
   <!-- 실행할 명령어 (node) -->
-  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <executable>C:\Windows\System32\cmd.exe</executable>
   <!-- 실행 인자 (App.js 경로) -->
-  <argument>C:\Development\CollectionWeb\MovieAPI\App.js</argument>
+  <argument>/c "C:\Program Files\nodejs\node.exe" "C:\Development\CollectionWeb\MovieAPI\App.js"</argument>
 
   <!-- 작업 디렉토리 (App.js가 있는 절대 경로 입력) -->
   <workingdirectory>C:\Development\CollectionWeb\MovieAPI</workingdirectory>
