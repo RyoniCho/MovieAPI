@@ -15,7 +15,8 @@
   <workingdirectory>C:\Development\CollectionWeb\MovieAPI</workingdirectory>
 
   <!-- 로그 설정 -->
-  <logmode>rotate</logmode>
+  <logpath>logs</logpath>
+  <logmode>roll</logmode>
   
   <!-- 환경 변수 설정 (필요한 경우) -->
   <env name="NODE_ENV" value="production"/>
