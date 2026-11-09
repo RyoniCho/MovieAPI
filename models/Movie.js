@@ -12,6 +12,7 @@ const movieSchema = new mongoose.Schema({
   extraImage:{type: [String],default:[]},  //Extra Image
   trailer: { type: String, required: false, default: '' },    // 예고편 영상 파일 경로 (옵션)
   mainMovie: {type: Map, of: String, required: false, default:{}}, // 영화 메인 본펀 경로 (옵션)
+  highQualityEncoding: { type: Boolean, default: false },
   mainMovieSub:{type:String, default:''}, // 영화 메인 본편 자막 경로(있을경우에만 사용.)
   isSeries: { type: Boolean, default: false }, // 시리즈 여부
   episodes: [{

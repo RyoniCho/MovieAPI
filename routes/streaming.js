@@ -5,11 +5,17 @@ const fs = require('fs');
 const fs_extra = require('fs-extra');
 const path = require('path');
 const { execSync } = require('child_process');
+const Movie = require('../models/Movie');
+
+const activeTranscodes = new Map();
 
 // /api/stream
-router.get('/', (req, res) => {
+router.get('/', (req, res, next) => {
     const videoPath = req.query.file;
     const resolution = req.query.resolution;
+    if (typeof videoPath !== 'string' || !videoPath) {
+        return res.status(400).send('File path is required');
+    }
     
     let relativeDir = path.dirname(videoPath).replace(/\\/g, '/');
     if (relativeDir === '.') relativeDir = '';
@@ -24,14 +30,26 @@ router.get('/', (req, res) => {
     const filenameBase = path.basename(videoPath, path.extname(videoPath));
     const folderName = relativeDir ? `${relativeDir}/${filenameBase}_${resolution}` : `${filenameBase}_${resolution}`;
     const hlsPath = path.join(__dirname, '..', 'hls', ...folderName.split('/'));
-    
-    fs_extra.ensureDirSync(hlsPath);
+    const masterPath = path.join(hlsPath, 'master.m3u8');
 
-    if (fs.existsSync(path.join(hlsPath, 'master.m3u8'))) {
-      return res.sendFile(path.join(hlsPath, 'master.m3u8'));
-    } 
+    let playlistReady = activeTranscodes.get(masterPath);
+    if (!playlistReady) {
+        if (fs.existsSync(masterPath)) return res.sendFile(masterPath);
+        if (!fs.existsSync(videoPath)) return res.status(404).send('Source video not found');
 
-    console.log("ffmpeg start");
+        playlistReady = transcodeToHls({ videoPath, resolution, movieId: req.query.movieId, hlsPath, folderName, masterPath });
+        activeTranscodes.set(masterPath, playlistReady);
+    }
+
+    playlistReady.then(() => {
+        if (!res.destroyed) res.sendFile(masterPath);
+    }, (err) => {
+        if (activeTranscodes.get(masterPath) === playlistReady) activeTranscodes.delete(masterPath);
+        if (!res.destroyed) next(err);
+    });
+});
+
+async function transcodeToHls({ videoPath, resolution, movieId, hlsPath, folderName, masterPath }) {
 
         let scaleValue = 1080;
         if (resolution === '720p') scaleValue = 720;
@@ -49,6 +67,15 @@ router.get('/', (req, res) => {
             }
         }
 
+        const useHighQuality = encoder === 'h264_qsv' && resolution === '1080p'
+            && typeof movieId === 'string' && /^[a-f\d]{24}$/i.test(movieId)
+            && await Movie.exists({
+                _id: movieId,
+                highQualityEncoding: true,
+                $or: [{ 'mainMovie.1080p': videoPath }, { 'episodes.video.1080p': videoPath }]
+            });
+
+        fs_extra.ensureDirSync(hlsPath);
         const foundSubtitles = [];
         const dir = path.dirname(videoPath);
         const ext = path.extname(videoPath);
@@ -75,16 +102,21 @@ router.get('/', (req, res) => {
         const hasSubtitle = foundSubtitles.length > 0;
         
         const command = ffmpeg(videoPath);
+
+        // QSV uses an explicit VBR budget for the high-quality preset.
+        const qualityOptions = useHighQuality
+            ? ['-preset', 'slow', '-b:v', '8M', '-maxrate:v', '9M', '-bufsize:v', '9M']
+            : ['-crf', '20', '-preset', 'veryfast'];
         
         const outputOptions = [
             '-vf', `scale=-1:${scaleValue}`,
             '-c:v', encoder,
-            '-crf', '20',
-            '-preset', 'veryfast',
+            ...qualityOptions,
             '-hls_time', '10',
             '-hls_playlist_type', 'event',
             '-hls_segment_filename', path.join(hlsPath, 'segment_%03d.ts')
         ];
+        const mediaPlaylistPath = hasSubtitle ? path.join(hlsPath, 'video.m3u8') : masterPath;
 
         if (hasSubtitle) {
              outputOptions.push('-hls_base_url', '');
@@ -157,10 +189,10 @@ ${subsVttName}
              const masterContent = `#EXTM3U
 ${subtitleMediaLines}#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${resolution === '720p' ? '1280x720' : '1920x1080'},SUBTITLES="subs"
 hls/${folderName}/video.m3u8`;
-             fs.writeFileSync(path.join(hlsPath, 'master.m3u8'), masterContent);
+             fs.writeFileSync(masterPath, masterContent);
 
              command.outputOptions(outputOptions);
-             command.output(path.join(hlsPath, 'video.m3u8'));
+             command.output(mediaPlaylistPath);
              
              command.on('start', () => {
                 console.log('HLS 트랜스코딩 시작 (Video Only mode for Multi-Subtitle support)');
@@ -170,25 +202,59 @@ hls/${folderName}/video.m3u8`;
             outputOptions.push('-hls_base_url', `hls/${folderName}/`);
             
             command.outputOptions(outputOptions);
-            command.output(path.join(hlsPath, 'master.m3u8'))
+            command.output(mediaPlaylistPath)
                    .on('start', () => {
                         console.log('HLS 트랜스코딩 시작 (encoder: ' + encoder + ')');
                    });
         }
 
-        command
-            .on('end', () => {
-                console.log('HLS 트랜스코딩 완료');
-                fs.unlinkSync(videoPath);
-                console.log(`${videoPath} : file removed`);
-            })
-            .on('stderr', (stderr) => {
-                console.log('stderr 로그:', stderr);
-            })
-            .on('error', (err) => {
+        return new Promise((resolve, reject) => {
+            // Wait for the media playlist even if the subtitle master already exists.
+            const playlistTimer = setInterval(() => {
+                if (fs.existsSync(mediaPlaylistPath)) {
+                    clearInterval(playlistTimer);
+                    resolve();
+                }
+            }, 250);
+
+            const onError = (err) => {
+                clearInterval(playlistTimer);
+                for (const playlistPath of new Set([masterPath, mediaPlaylistPath])) {
+                    try {
+                        fs.rmSync(playlistPath, { force: true });
+                    } catch (cleanupErr) {
+                        console.error('Failed to remove incomplete HLS playlist:', cleanupErr);
+                    }
+                }
+                activeTranscodes.delete(masterPath);
                 console.error('HLS 트랜스코딩 오류:', err);
-            })
-            .run();
-});
+                reject(err);
+            };
+
+            command
+                .on('end', () => {
+                    if (!fs.existsSync(mediaPlaylistPath)) return onError(new Error('HLS playlist was not generated'));
+
+                    clearInterval(playlistTimer);
+                    activeTranscodes.delete(masterPath);
+                    resolve();
+                    console.log('HLS 트랜스코딩 완료');
+                    fs.unlink(videoPath, (err) => {
+                        if (err) console.error('Failed to remove source video:', err);
+                        else console.log(`${videoPath} : file removed`);
+                    });
+                })
+                .on('stderr', (stderr) => {
+                    console.log('stderr 로그:', stderr);
+                })
+                .on('error', onError);
+
+            try {
+                command.run();
+            } catch (err) {
+                onError(err);
+            }
+        });
+}
 
 module.exports = router;

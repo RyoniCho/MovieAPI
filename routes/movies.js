@@ -437,6 +437,9 @@ router.put('/:id', authMiddleware, requireAdmin, putUpload, async (req, res) => 
             isSeries: body.isSeries === 'true' || body.isSeries === true,
             episodes: episodesArr
         };
+        if (body.highQualityEncoding !== undefined) {
+            updateFields.highQualityEncoding = body.highQualityEncoding === 'true' || body.highQualityEncoding === true;
+        }
         if (imagePath) updateFields.image = imagePath;
         if (extraImagePaths.length > 0) updateFields.extraImage = extraImagePaths;
 
