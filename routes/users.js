@@ -58,7 +58,7 @@ router.get('/me/service-home', authMiddleware, async (req, res) => {
                 { $addFields: { addedAt: { $ifNull: ['$addedAt', { $toDate: '$_id' }] } } },
                 { $sort: { addedAt: -1, _id: -1 } },
                 { $limit: 20 },
-                { $project: { title: 1, image: 1, category: 1, serialNumber: 1, isSeries: 1, addedAt: 1 } }
+                { $project: { title: 1, image: 1, category: 1, serialNumber: 1, isSeries: 1, addedAt: 1, trailer: 1, description: 1, releaseDate: 1, actor: 1 } }
             ])
         ]);
         res.set('Cache-Control', 'no-store');

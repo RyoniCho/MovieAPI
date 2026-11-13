@@ -21,4 +21,5 @@ test('service home returns facets and filters new additions before limit',async(
   const r=await fetch(base+'/api/users/me/service-home?category=Animation');assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');
   assert.deepEqual(Object.keys(await r.json()).sort(),['continueWatching','recentAdded','recentWatched','rewatch']);
   assert.equal(hp[0].$match.userId.toString(),'507f1f77bcf86cd799439011');assert.equal(mp[0].$match.category,'Animation');assert.equal(mp[3].$limit,20);
+  for (const field of ['trailer','description','releaseDate','actor']) assert.equal(mp[4].$project[field],1);
 });
