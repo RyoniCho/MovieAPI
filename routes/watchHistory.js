@@ -1,17 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const WatchHistory = require('../models/WatchHistory');
+const Movie = require('../models/Movie');
+const mongoose = require('mongoose');
+const { parseEpisode, historyUpdate } = require('../utils/watchHistoryPolicy');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
 // 유저별 영화 시청 위치 조회 API (/api/watch-history)
 router.get('/watch-history', authMiddleware, async (req, res) => {
     const userId = req.userId;
     const { movieId, episodeIndex } = req.query;
-    if (!movieId) {
+    if (!mongoose.isValidObjectId(movieId)) {
         return res.status(400).json({ error: 'movieId is required' });
     }
     
-    const epIdx = episodeIndex !== undefined ? parseInt(episodeIndex) : -1;
+    let epIdx;
+    try { epIdx = parseEpisode(episodeIndex); } catch { return res.status(400).json({ error: 'Invalid episodeIndex' }); }
 
     try {
         let query = { userId, movieId };
@@ -23,7 +27,7 @@ router.get('/watch-history', authMiddleware, async (req, res) => {
 
         const history = await WatchHistory.findOne(query);
         if (history) {
-            res.json({ lastWatchedTime: history.lastWatchedTime });
+            res.json({ lastWatchedTime: history.lastWatchedTime, duration: history.duration, completedAt: history.completedAt });
         } else {
             res.json({ lastWatchedTime: 0 });
         }
@@ -35,37 +39,34 @@ router.get('/watch-history', authMiddleware, async (req, res) => {
 
 // 유저별 영화 시청 위치 저장/업데이트 API (/api/watch-history)
 router.post('/watch-history', authMiddleware, async (req, res) => {
-    const userId = req.userId;
-    const { movieId, lastWatchedTime, episodeIndex } = req.body;
-    if (!movieId || typeof lastWatchedTime !== 'number') {
-        return res.status(400).json({ error: 'movieId와 lastWatchedTime(Number)가 필요합니다.' });
-    }
-
-    const epIdx = episodeIndex !== undefined ? parseInt(episodeIndex) : -1;
-
+    const { movieId, episodeIndex } = req.body;
+    let epIdx, update;
     try {
-        let filter = { userId, movieId, episodeIndex: epIdx };
-        
-        if (epIdx === -1) {
-             const existing = await WatchHistory.findOne({ userId, movieId, episodeIndex: { $exists: false } });
-             if (existing) {
-                 existing.episodeIndex = -1;
-                 existing.lastWatchedTime = lastWatchedTime;
-                 existing.updatedAt = Date.now();
-                 await existing.save();
-                 return res.json({ success: true, lastWatchedTime: existing.lastWatchedTime });
-             }
+        if (!mongoose.isValidObjectId(movieId)) throw new Error('Invalid movieId');
+        epIdx = parseEpisode(episodeIndex);
+        update = historyUpdate(req.body);
+    } catch (error) { return res.status(400).json({ error: error.message }); }
+    try {
+        const movie = await Movie.findById(movieId).select('isSeries episodes');
+        if (!movie) return res.status(404).json({ error: 'Movie not found' });
+        if (movie.isSeries ? epIdx < 0 || epIdx >= movie.episodes.length : epIdx !== -1) {
+            return res.status(400).json({ error: 'Invalid episode for this movie' });
         }
-
-        const updated = await WatchHistory.findOneAndUpdate(
-            { userId, movieId, episodeIndex: epIdx },
-            { lastWatchedTime, updatedAt: Date.now() },
-            { upsert: true, new: true }
-        );
-        res.json({ success: true, lastWatchedTime: updated.lastWatchedTime });
-    } catch (err) {
+        const filter = { userId: req.userId, movieId, episodeIndex: epIdx };
+        // Reuse pre-episode records only if the canonical record does not exist.
+        if (epIdx === -1 && !(await WatchHistory.exists(filter))) {
+            const legacy = await WatchHistory.findOne({ userId: req.userId, movieId, episodeIndex: { $exists: false } });
+            if (legacy) {
+                Object.assign(legacy, update, { episodeIndex: -1 });
+                await legacy.save();
+                return res.json({ success: true, lastWatchedTime: legacy.lastWatchedTime });
+            }
+        }
+        const updated = await WatchHistory.findOneAndUpdate(filter, { $set: update }, { upsert: true, new: true, runValidators: true });
+        res.json({ success: true, lastWatchedTime: updated.lastWatchedTime, completedAt: updated.completedAt });
+    } catch (error) {
         res.status(500).json({ error: 'Failed to save watch history' });
-        console.log(err);
+        console.error('Watch history save failed:', error.name);
     }
 });
 

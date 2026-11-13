@@ -5,6 +5,8 @@ const WatchHistorySchema = new mongoose.Schema({
     movieId: { type: mongoose.Schema.Types.ObjectId, ref: 'Movie', required: true },
     episodeIndex: { type: Number, default: -1 }, // -1: Main Movie, 0+: Episode Index
     lastWatchedTime: { type: Number, default: 0 }, // 초 단위
+    duration: { type: Number, min: 0 },
+    completedAt: { type: Date, default: null },
     updatedAt: { type: Date, default: Date.now }
 });
 

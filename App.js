@@ -1,3 +1,5 @@
+// Capture application output before loading routes or connecting to the database.
+require('./utils/weeklyLogger').installWeeklyLogging();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');

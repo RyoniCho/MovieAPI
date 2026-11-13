@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 // 영화 스키마 정의
 const movieSchema = new mongoose.Schema({
+  addedAt: { type: Date, default: Date.now },
   serialNumber: { type: String, required: true, unique: true },
   title: { type: String, required: true },      // 영화 제목 (필수)
   actor: { 

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const WatchHistory = require('../models/WatchHistory');
+const Movie = require('../models/Movie');
+const { categoryFilter, serviceHistoryPipeline } = require('../utils/watchHistoryPolicy');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
 // 관리자만 접근 가능: 유저 생성 (/api/users)
@@ -41,6 +43,28 @@ router.delete('/me/watch-histories/:id', authMiddleware, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: '시청 기록 삭제 실패', details: err.message });
+    }
+});
+
+// All personal rows are scoped to the authenticated user. Filter before limiting.
+router.get('/me/service-home', authMiddleware, async (req, res) => {
+    const category = req.query.category || '';
+    if (typeof category !== 'string' || category.length > 100) return res.status(400).json({ error: 'Invalid category' });
+    try {
+        const [history, recentAdded] = await Promise.all([
+            WatchHistory.aggregate(serviceHistoryPipeline(req.userId, category)),
+            Movie.aggregate([
+                { $match: categoryFilter(category) },
+                { $addFields: { addedAt: { $ifNull: ['$addedAt', { $toDate: '$_id' }] } } },
+                { $sort: { addedAt: -1, _id: -1 } },
+                { $limit: 20 },
+                { $project: { title: 1, image: 1, category: 1, serialNumber: 1, isSeries: 1, addedAt: 1 } }
+            ])
+        ]);
+        res.set('Cache-Control', 'no-store');
+        res.json({ ...(history[0] || { continueWatching: [], recentWatched: [], rewatch: [] }), recentAdded });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load service home' });
     }
 });
 
